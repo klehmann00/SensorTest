@@ -59,8 +59,12 @@ export const AdminProvider = ({ children }) => {
   };
 
   if (loading) {
-    // You can replace this with a loading component if needed
-    return null;
+    // Always provide the context, even during loading
+    return (
+      <AdminContext.Provider value={value}>
+        {children}
+      </AdminContext.Provider>
+    );
   }
 
   return (

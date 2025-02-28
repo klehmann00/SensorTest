@@ -30,7 +30,6 @@ import AdminScreen from './AdminScreen';
 import CalibrationManager from './CalibrationManager';
 import SessionManager from './SessionManager';
 
-
 // Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyC_wBOaHBmwBhrk0-OZSrQejlNE76tr33Q",
@@ -591,78 +590,6 @@ const SensorDisplay = ({ title, data, color, scale = 1 }) => {
         <SensorDisplay title="Accelerometer (G)" data={accelData} color="#FF6B6B" scale={1} />
         <SensorDisplay title="Gyroscope (rad/s)" data={gyroData} color="#4ECDC4" scale={2} />
         <SensorDisplay title="Magnetometer (μT)" data={magData} color="#45B7D1" scale={0.1} />
-      </View>
-    </ScrollView>
-  );
-};
-
-// AdminScreen Component
-const AdminScreen = () => {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  const loadUsers = async () => {
-    setLoading(true);
-    const allUsers = await AdminManager.getAllUsers();
-    setUsers(allUsers);
-    setLoading(false);
-  };
-
-  const toggleUserAccess = async (userId, currentAccess) => {
-    const newAccess = !currentAccess;
-    await AdminManager.setUserAccess(userId, newAccess);
-    
-    // Refresh user list
-    loadUsers();
-  };
-
-  const toggleAdminStatus = async (userId, currentStatus) => {
-    const newStatus = !currentStatus;
-    await AdminManager.setAdminStatus(userId, newStatus);
-    
-    // Refresh user list
-    loadUsers();
-  };
-
-  return (
-    <ScrollView style={styles.scrollView}>
-      <View style={styles.container}>
-        <Text style={styles.mainTitle}>Admin Panel</Text>
-        
-        <Button title="Refresh Users" onPress={loadUsers} color="#3498DB" />
-        
-        {loading ? (
-          <Text style={styles.loadingText}>Loading users...</Text>
-        ) : (
-          <View style={styles.usersContainer}>
-            {users.length === 0 ? (
-              <Text style={styles.noDataText}>No users found</Text>
-            ) : (
-              users.map(user => (
-                <View key={user.id} style={styles.userItem}>
-                  <Text style={styles.userEmail}>{user.email}</Text>
-                  <View style={styles.userControls}>
-                    <Button
-                      title={user.access ? "Revoke Access" : "Grant Access"}
-                      onPress={() => toggleUserAccess(user.id, user.access)}
-                      color={user.access ? "#E74C3C" : "#2ECC71"}
-                    />
-                    <View style={styles.buttonSpacer} />
-                    <Button
-                      title={user.isAdmin ? "Remove Admin" : "Make Admin"}
-                      onPress={() => toggleAdminStatus(user.id, user.isAdmin)}
-                      color={user.isAdmin ? "#E74C3C" : "#3498DB"}
-                    />
-                  </View>
-                </View>
-              ))
-            )}
-          </View>
-        )}
       </View>
     </ScrollView>
   );

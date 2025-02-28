@@ -16,6 +16,170 @@ import { exportSessionData } from './DataExport';
 import * as FileSystem from 'expo-file-system';
 import * as MailComposer from 'expo-mail-composer';
 
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#2C3E50',
+  },
+  header: {
+    padding: 20,
+    backgroundColor: '#34495e',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  subTitle: {
+    fontSize: 16,
+    color: '#95a5a6',
+    marginTop: 5,
+  },
+  text: {
+    color: 'white',
+    fontSize: 18,
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  subText: {
+    color: '#95a5a6',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  error: {
+    color: '#e74c3c',
+    fontSize: 16,
+    textAlign: 'center',
+    margin: 20,
+  },
+  loadingText: {
+    color: 'white',
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  userList: {
+    padding: 15,
+  },
+  userCard: {
+    backgroundColor: '#34495e',
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 15,
+  },
+  userInfo: {
+    marginBottom: 10,
+  },
+  emailContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  userEmail: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  copyButton: {
+    backgroundColor: '#4ECDC4',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 5,
+    marginLeft: 10,
+  },
+  copyButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  userId: {
+    color: '#95a5a6',
+    fontSize: 14,
+    marginBottom: 5,
+  },
+  lastActive: {
+    color: '#95a5a6',
+    fontSize: 14,
+    marginBottom: 5,
+  },
+  status: {
+    fontSize: 14,
+    marginBottom: 5,
+  },
+  statusActive: {
+    color: '#2ecc71',
+  },
+  statusDisabled: {
+    color: '#e74c3c',
+  },
+  accessButton: {
+    padding: 10,
+    borderRadius: 5,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  retryButton: {
+    backgroundColor: '#4ECDC4',
+    padding: 10,
+    borderRadius: 5,
+    marginHorizontal: 20,
+    marginTop: 10,
+  },
+  sessionsSection: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#2C3E50',
+    borderRadius: 5,
+  },
+  sessionsTitle: {
+    color: '#95a5a6',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  sessionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  sessionDate: {
+    color: '#95a5a6',
+    fontSize: 12,
+  },
+  sessionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  exportButton: {
+    backgroundColor: '#4ECDC4',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  exportButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  deleteButton: {
+    backgroundColor: '#e74c3c',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  deleteButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+});
+
 const AdminScreen = () => {
   const { isAdmin } = useAdmin();
   const [users, setUsers] = useState([]);
@@ -277,169 +441,5 @@ const AdminScreen = () => {
     </ScrollView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#2C3E50',
-  },
-  header: {
-    padding: 20,
-    backgroundColor: '#34495e',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  subTitle: {
-    fontSize: 16,
-    color: '#95a5a6',
-    marginTop: 5,
-  },
-  text: {
-    color: 'white',
-    fontSize: 18,
-    textAlign: 'center',
-    marginTop: 20,
-  },
-  subText: {
-    color: '#95a5a6',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  error: {
-    color: '#e74c3c',
-    fontSize: 16,
-    textAlign: 'center',
-    margin: 20,
-  },
-  loadingText: {
-    color: 'white',
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  userList: {
-    padding: 15,
-  },
-  userCard: {
-    backgroundColor: '#34495e',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
-  },
-  userInfo: {
-    marginBottom: 10,
-  },
-  emailContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 5,
-  },
-  userEmail: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-    flex: 1,
-  },
-  copyButton: {
-    backgroundColor: '#4ECDC4',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 5,
-    marginLeft: 10,
-  },
-  copyButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  userId: {
-    color: '#95a5a6',
-    fontSize: 14,
-    marginBottom: 5,
-  },
-  lastActive: {
-    color: '#95a5a6',
-    fontSize: 14,
-    marginBottom: 5,
-  },
-  status: {
-    fontSize: 14,
-    marginBottom: 5,
-  },
-  statusActive: {
-    color: '#2ecc71',
-  },
-  statusDisabled: {
-    color: '#e74c3c',
-  },
-  accessButton: {
-    padding: 10,
-    borderRadius: 5,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  retryButton: {
-    backgroundColor: '#4ECDC4',
-    padding: 10,
-    borderRadius: 5,
-    marginHorizontal: 20,
-    marginTop: 10,
-  },
-  sessionsSection: {
-    marginTop: 10,
-    padding: 10,
-    backgroundColor: '#2C3E50',
-    borderRadius: 5,
-  },
-  sessionsTitle: {
-    color: '#95a5a6',
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  sessionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 5,
-  },
-  sessionDate: {
-    color: '#95a5a6',
-    fontSize: 12,
-  },
-  sessionButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  exportButton: {
-    backgroundColor: '#4ECDC4',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  exportButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  deleteButton: {
-    backgroundColor: '#e74c3c',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  deleteButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-});
 
 export default AdminScreen;
