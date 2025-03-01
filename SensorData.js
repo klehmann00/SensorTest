@@ -23,7 +23,7 @@ class SensorDataManager {
   
   // Start listening to all sensors
   startSensors(callbacks) {
-    console.log('Starting sensors');
+    console.log('Starting sensors with callbacks:', callbacks ? 'Provided' : 'Missing');
     
     // Store callbacks
     this.onAccelerometerUpdate = callbacks.onAccelerometerUpdate;
@@ -37,7 +37,11 @@ class SensorDataManager {
     
     // Start accelerometer if callback provided
     if (this.onAccelerometerUpdate) {
+      console.log('Starting accelerometer listener');
       this.accelSubscription = Accelerometer.addListener(data => {
+        // We'll log every 10th data point to avoid flooding the console
+        if (Math.random() < 0.1) {
+        }
         this.onAccelerometerUpdate(data);
       });
       console.log('Accelerometer started');
@@ -45,7 +49,11 @@ class SensorDataManager {
     
     // Start gyroscope if callback provided
     if (this.onGyroscopeUpdate) {
+      console.log('Starting gyroscope listener');
       this.gyroSubscription = Gyroscope.addListener(data => {
+        // Log occasionally
+        if (Math.random() < 0.1) {
+        }
         this.onGyroscopeUpdate(data);
       });
       console.log('Gyroscope started');
@@ -53,7 +61,11 @@ class SensorDataManager {
     
     // Start magnetometer if callback provided
     if (this.onMagnetometerUpdate) {
+      console.log('Starting magnetometer listener');
       this.magSubscription = Magnetometer.addListener(data => {
+        // Log occasionally
+        if (Math.random() < 0.1) {
+        }
         this.onMagnetometerUpdate(data);
       });
       console.log('Magnetometer started');

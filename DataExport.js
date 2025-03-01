@@ -19,21 +19,37 @@ export const exportSessionData = async (userId, sessionId) => {
     
     console.log('Session data retrieved, keys:', Object.keys(sessionData));
     
+    // Log data availability
+    if (sessionData.accelerometer) {
+    } else {
+      console.log('No accelerometer data found');
+    }
+    
+    if (sessionData.gyroscope) {
+    } else {
+      console.log('No gyroscope data found');
+    }
+    
+    if (sessionData.magnetometer) {
+    } else {
+      console.log('No magnetometer data found');
+    }
+    
     // Format the data into CSV files
     const files = [];
     
     // Process accelerometer data if it exists
-if (sessionData.accelerometer) {
-  console.log('Processing accelerometer data...');
-  const accelData = sessionData.accelerometer;
-  const timestamps = Object.keys(accelData).sort();
+    if (sessionData.accelerometer) {
+      console.log('Processing accelerometer data...');
+      const accelData = sessionData.accelerometer;
+      const timestamps = Object.keys(accelData).sort();
   
-  // Create different CSV files for different processing stages
+    // Create different CSV files for different processing stages
   
-  // 1. Raw data CSV
-  let rawCsvContent = 'timestamp,x,y,z\n';
-  timestamps.forEach(timestamp => {
-    const reading = accelData[timestamp];
+    // 1. Raw data CSV
+    let rawCsvContent = 'timestamp,x,y,z\n';
+    timestamps.forEach(timestamp => {
+      const reading = accelData[timestamp];
     
     // Get raw values regardless of format
     const rawX = reading.raw_x || reading.x;
@@ -200,6 +216,7 @@ if (sessionData.accelerometer) {
     return { files };
   } catch (error) {
     console.error('Error exporting session data:', error);
+    console.log(`Returning ${files.length} files for export:`, files.map(f => f.fileName));
     return { files: [] };
   }
 };

@@ -140,14 +140,36 @@ class StorageManager {
 
   // Count data points in a session
   async countSessionDataPoints(userId, sessionId) {
+    console.log(`Starting count for session ${sessionId}`);
     const sessionData = await this.getSessionData(userId, sessionId);
-    if (!sessionData) return 0;
+    
+    if (!sessionData) {
+      console.log('No session data found for counting');
+      return 0;
+    }
     
     let totalPoints = 0;
-    if (sessionData.accelerometer) totalPoints += Object.keys(sessionData.accelerometer).length;
-    if (sessionData.gyroscope) totalPoints += Object.keys(sessionData.gyroscope).length;
-    if (sessionData.magnetometer) totalPoints += Object.keys(sessionData.magnetometer).length;
+    console.log("Session data keys:", Object.keys(sessionData));
     
+    if (sessionData.accelerometer) {
+      const accelPoints = Object.keys(sessionData.accelerometer).length;
+      console.log(`Found ${accelPoints} accelerometer points`);
+      totalPoints += accelPoints;
+    }
+    
+    if (sessionData.gyroscope) {
+      const gyroPoints = Object.keys(sessionData.gyroscope).length;
+      console.log(`Found ${gyroPoints} gyroscope points`);
+      totalPoints += gyroPoints;
+    }
+    
+    if (sessionData.magnetometer) {
+      const magPoints = Object.keys(sessionData.magnetometer).length;
+      console.log(`Found ${magPoints} magnetometer points`);
+      totalPoints += magPoints;
+    }
+    
+    console.log(`Total data points: ${totalPoints}`);
     return totalPoints;
   }
 

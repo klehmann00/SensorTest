@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet,
   Text, 
@@ -29,6 +29,7 @@ import AdminManager from './AdminManager';
 import AdminScreen from './AdminScreen';
 import CalibrationManager from './CalibrationManager';
 import SessionManager from './SessionManager';
+import { AdminProvider, useAdmin } from './AdminContext';
 
 // Firebase config
 const firebaseConfig = {
@@ -47,53 +48,13 @@ const database = getDatabase(app);
 
 // Initialize Auth with sessionOnly persistence (will be cleared when app closes)
 const auth = initializeAuth(app, {
-  persistence: browserSessionPersistence // This replaces AsyncStorage persistence
+  persistence: getReactNativePersistence(AsyncStorage)
 });
 
 // Initialize our managers
 StorageManager.initialize(database);
 AuthManager.initialize(auth, database);
 AdminManager.initialize(database);
-
-// Admin context for checking admin status
-const AdminContext = React.createContext({ isAdmin: false });
-
-// AdminProvider component
-const AdminProvider = ({ children }) => {
-  const [isAdmin, setIsAdmin] = useState(false);
-  
-useEffect(() => {
-  // Function to check admin status
-  const checkAdminStatus = async (user) => {
-    if (!user) {
-      setIsAdmin(false);
-      return;
-    }
-    
-    const isUserAdmin = await AuthManager.checkIsAdmin(user.uid);
-    setIsAdmin(isUserAdmin);
-  };
-  
-  // Use the AuthManager to subscribe to changes instead
-  const unsubscribe = AuthManager.subscribeToAuthChanges(checkAdminStatus);
-  
-  // Cleanup
-  return () => {
-    if (unsubscribe) {
-      AuthManager.unsubscribeFromAuthChanges(checkAdminStatus);
-    }
-  };
-}, []);
-  
-  return (
-    <AdminContext.Provider value={{ isAdmin }}>
-      {children}
-    </AdminContext.Provider>
-  );
-};
-
-// Hook to use admin context
-const useAdmin = () => React.useContext(AdminContext);
 
 // Create stack navigator
 const Stack = createNativeStackNavigator();
@@ -222,7 +183,6 @@ const SignUpScreen = ({ navigation }) => {
 // SensorScreen Component
 const SensorScreen = () => {
   const { isAdmin } = useAdmin();
-  console.log("SensorScreen - isAdmin status:", isAdmin);
   
   // State variables
   const [accelData, setAccelData] = useState({ x: 0, y: 0, z: 0 });
@@ -234,81 +194,97 @@ const SensorScreen = () => {
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibrationProgress, setCalibrationProgress] = useState(0);
   const [showProcessed, setShowProcessed] = useState(true);
-  
-  // Handle accelerometer data
-  const handleAccelerometerData = (rawData) => {
-    
-    // If calibrating, add sample
-    if (isCalibrating) {
-      CalibrationManager.addCalibrationSample(rawData);
-      setAccelData(rawData);
-      return;
-    }
-    
-    // Apply calibration if available
-    const calibratedData = CalibrationManager.applyCalibration(rawData);
-    
-    // Process the data (filter and rate limit)
-    const processedData = DataProcessor.processAccelerometerData(calibratedData);
-    
-    // Update state
-    setAccelData(processedData);
+  const recordingRef = useRef(false);
+  const sessionIdRef = useRef(null);
+  const dataPointCountRef = useRef(0); // Add this line
 
-    // If recording, store the data
-    if (isRecording && sessionId) {
-      const userId = AuthManager.getCurrentUserId();
-      if (userId) {
-        StorageManager.storeAccelerometerData(userId, sessionId, processedData);
-      }
-    }
-  };
+  // Handle accelerometer data
+const handleAccelerometerData = (rawData) => {
+  // Use ref values instead of state
+  const isCurrentlyRecording = recordingRef.current;
+  const currentSessionId = sessionIdRef.current;
   
-  // Handle gyroscope data
-  const handleGyroscopeData = (rawData) => {
-    // Skip processing during calibration
-    if (isCalibrating) {
-      setGyroData(rawData);
-      return;
-    }
-    
-    // Process the data
-    const processedData = DataProcessor.processGyroscopeData(rawData);
-    
-    // Update state
-    setGyroData(processedData);
-    
-    // If recording, store the data
-    if (isRecording && sessionId) {
-      const userId = AuthManager.getCurrentUserId();
-      if (userId) {
-        StorageManager.storeGyroscopeData(userId, sessionId, processedData);
-      }
-    }
-  };
+  // If calibrating, add sample
+  if (isCalibrating) {
+    CalibrationManager.addCalibrationSample(rawData);
+    setAccelData(rawData);
+    return;
+  }
   
-  // Handle magnetometer data
-  const handleMagnetometerData = (rawData) => {
-    // Skip processing during calibration
-    if (isCalibrating) {
-      setMagData(rawData);
-      return;
-    }
-    
-    // Process the data
-    const processedData = DataProcessor.processMagnetometerData(rawData);
-    
-    // Update state
-    setMagData(processedData);
-    
-    // If recording, store the data
-    if (isRecording && sessionId) {
-      const userId = AuthManager.getCurrentUserId();
-      if (userId) {
-        StorageManager.storeMagnetometerData(userId, sessionId, processedData);
-      }
-    }
-  };
+  // Apply calibration if available
+  const calibratedData = CalibrationManager.applyCalibration(rawData);
   
+  // Process the data (filter and rate limit)
+  const processedData = DataProcessor.processAccelerometerData(calibratedData);
+  
+  // Update state
+  setAccelData(processedData);
+
+  // If recording, store the data - using ref values here
+  if (isCurrentlyRecording && currentSessionId) {
+    const userId = AuthManager.getCurrentUserId();
+    if (userId) {
+      StorageManager.storeAccelerometerData(userId, currentSessionId, processedData);
+    } else {
+      console.log('Cannot record: No user ID available');
+    }
+  }
+};
+
+// Handle gyroscope data
+const handleGyroscopeData = (rawData) => {
+  // Use ref values 
+  const isCurrentlyRecording = recordingRef.current;
+  const currentSessionId = sessionIdRef.current;
+  
+  // Skip processing during calibration
+  if (isCalibrating) {
+    setGyroData(rawData);
+    return;
+  }
+  
+  // Process the data
+  const processedData = DataProcessor.processGyroscopeData(rawData);
+  
+  // Update state
+  setGyroData(processedData);
+  
+  // If recording, store the data - using ref values
+  if (isCurrentlyRecording && currentSessionId) {
+    const userId = AuthManager.getCurrentUserId();
+    if (userId) {
+      StorageManager.storeGyroscopeData(userId, currentSessionId, processedData);
+    }
+  }
+};
+
+// Handle magnetometer data
+const handleMagnetometerData = (rawData) => {
+  // Use ref values
+  const isCurrentlyRecording = recordingRef.current;
+  const currentSessionId = sessionIdRef.current;
+  
+  // Skip processing during calibration
+  if (isCalibrating) {
+    setMagData(rawData);
+    return;
+  }
+  
+  // Process the data
+  const processedData = DataProcessor.processMagnetometerData(rawData);
+  
+  // Update state
+  setMagData(processedData);
+  
+  // If recording, store the data - using ref values
+  if (isCurrentlyRecording && currentSessionId) {
+    const userId = AuthManager.getCurrentUserId();
+    if (userId) {
+      StorageManager.storeMagnetometerData(userId, currentSessionId, processedData);
+    }
+  }
+};
+
   // Start recording
   const startRecording = async () => {
     // Check if user is logged in
@@ -320,28 +296,44 @@ const SensorScreen = () => {
     
     // Generate session ID
     const newSessionId = Date.now().toString();
-    
+    console.log(`Starting recording with session ID: ${newSessionId}`);
+
     // Start recording session
     const success = await StorageManager.startRecordingSession(userId, newSessionId);
     
     if (success) {
+      console.log(`Recording started successfully: user=${userId}, session=${newSessionId}`);
       setSessionId(newSessionId);
       setIsRecording(true);
       setDataPointCount(0);
+      
+      sessionIdRef.current = newSessionId;
+      recordingRef.current = true;
       
       // Reset data processor
       DataProcessor.reset();
       
       // Start data point counter
-      const countInterval = setInterval(async () => {
-        if (!isRecording) {
-          clearInterval(countInterval);
-          return;
-        }
-        
-        const count = await StorageManager.countSessionDataPoints(userId, newSessionId);
-        setDataPointCount(count);
-      }, 1000);
+     // Start data point counter with enhanced debugging
+    const countInterval = setInterval(async () => {
+    console.log(`Count interval fired, recording: ${recordingRef.current}, sessionId: ${sessionIdRef.current}`);
+  
+    if (!recordingRef.current) {
+      console.log("Recording stopped, clearing interval");
+      clearInterval(countInterval);
+    return;
+  }
+  
+  try {
+      console.log(`Counting data points for session ${newSessionId}`);
+      const count = await StorageManager.countSessionDataPoints(userId, newSessionId);
+      console.log(`Data point count result: ${count}`);
+      setDataPointCount(count);
+      dataPointCountRef.current = count;
+    } catch (error) {
+     console.error("Error counting data points:", error);
+    }
+  }, 1000);
       
       return countInterval;
     } else {
@@ -360,6 +352,8 @@ const SensorScreen = () => {
     
     // Stop recording
     setIsRecording(false);
+    recordingRef.current = false;
+    sessionIdRef.current = null;
     
     // Clear counter interval
     if (countInterval) {
@@ -389,34 +383,41 @@ const SensorScreen = () => {
   
   // Start calibration
   const startCalibration = () => {
-    // Setup calibration callbacks
-    CalibrationManager.setCallbacks({
-      onCalibrationStart: () => {
-        setIsCalibrating(true);
-        setCalibrationProgress(0);
-        Alert.alert(
-          'Calibration Started',
-          'Please place the device on a flat, level surface and keep it still for 3 seconds.'
-        );
-      },
-      onCalibrationProgress: (progress) => {
-        setCalibrationProgress(progress);
-      },
-      onCalibrationComplete: (matrix) => {
-        setIsCalibrating(false);
-        Alert.alert('Calibration Complete', 'Device orientation calibrated successfully.');
-        
-        // Reset the data processor with new calibration
-        DataProcessor.reset();
-      },
-      onCalibrationFailed: (error) => {
-        setIsCalibrating(false);
-        Alert.alert('Calibration Failed', error || 'Could not calibrate device.');
-      }
-    });
-    
-    // Start calibration
-    CalibrationManager.startCalibration();
+  // Setup calibration callbacks
+  console.log("Setting up calibration callbacks");
+  
+  CalibrationManager.setCallbacks({
+    onCalibrationStart: () => {
+      console.log("onCalibrationStart callback triggered");
+      setIsCalibrating(true);
+      setCalibrationProgress(0);
+      Alert.alert(
+        'Calibration Started',
+        'Please place the device on a flat, level surface and keep it still for 3 seconds.'
+      );
+    },
+    onCalibrationProgress: (progress) => {
+      console.log(`onCalibrationProgress callback: ${progress}`);
+      setCalibrationProgress(progress);
+    },
+    onCalibrationComplete: (matrix) => {
+      console.log("onCalibrationComplete callback triggered");
+      setIsCalibrating(false);
+      Alert.alert('Calibration Complete', 'Device orientation calibrated successfully.');
+      
+      // Reset the data processor with new calibration
+      DataProcessor.reset();
+    },
+    onCalibrationFailed: (error) => {
+      console.log("onCalibrationFailed callback triggered:", error);
+      setIsCalibrating(false);
+      Alert.alert('Calibration Failed', error || 'Could not calibrate device.');
+    }
+  });
+  
+  // Start calibration
+  console.log("Calling CalibrationManager.startCalibration()");
+  CalibrationManager.startCalibration();
   };
   
   // Toggle recording

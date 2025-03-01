@@ -227,48 +227,81 @@ const AdminScreen = () => {
     loadUsers();
   }, [isAdmin, loadUsers]);
 
-  const handleExportSession = async (userId, sessionId) => {
-    try {
-      setLoading(true);
-      const exportData = await exportSessionData(userId, sessionId);
-      
-      // Create exports directory
-      const dirPath = `${FileSystem.documentDirectory}exports/`;
-      const dirInfo = await FileSystem.getInfoAsync(dirPath);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
-      }
+  // In AdminScreen.js, modify the handleExportSession function to add more logging:
+const handleExportSession = async (userId, sessionId) => {
+  try {
+    setLoading(true);
+    console.log(`Starting export for session ${sessionId}`);
+    const exportData = await exportSessionData(userId, sessionId);
+    console.log(`Export data received:`, exportData);
+    
+    if (!exportData.files || exportData.files.length === 0) {
+      console.log("No files in export data");
+      Alert.alert('Error', 'No data files were generated for export');
+      setLoading(false);
+      return;
+    }
+    
+    // Log the files we're about to create
+    console.log(`Preparing to create ${exportData.files.length} files:`, 
+                exportData.files.map(f => f.fileName));
+    
+    // Create exports directory
+    const dirPath = `${FileSystem.documentDirectory}exports/`;
+    const dirInfo = await FileSystem.getInfoAsync(dirPath);
+    if (!dirInfo.exists) {
+      console.log(`Creating directory: ${dirPath}`);
+      await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
+    }
 
-      // Create and write each file
-      const filePaths = await Promise.all(exportData.files.map(async (file) => {
+    // Create and write each file
+    const filePaths = [];
+    for (const file of exportData.files) {
+      try {
         const timestamp = new Date().getTime();
         const filePath = `${dirPath}${timestamp}_${file.fileName}`;
         await FileSystem.writeAsStringAsync(filePath, file.content);
-        console.log('File written to:', filePath);
-        return filePath;
-      }));
+        console.log(`File written successfully: ${filePath}`);
+        filePaths.push(filePath);
+      } catch (fileError) {
+        console.error(`Error writing file ${file.fileName}:`, fileError);
+      }
+    }
+    
+    if (filePaths.length === 0) {
+      console.log("No files were successfully created");
+      Alert.alert('Error', 'Failed to create export files');
+      setLoading(false);
+      return;
+    }
 
-      // Check if mail is available
-      const isAvailable = await MailComposer.isAvailableAsync();
-      
-      if (isAvailable) {
+    // Check if mail is available
+    const isAvailable = await MailComposer.isAvailableAsync();
+    console.log(`Mail composer available: ${isAvailable}`);
+    
+    if (isAvailable) {
+      try {
         const result = await MailComposer.composeAsync({
           subject: `Sensor Data Export - ${new Date(parseInt(sessionId)).toLocaleString()}`,
           body: 'Attached are the sensor data files from your session.',
           attachments: filePaths
         });
         console.log('Mail result:', result);
-      } else {
-        Alert.alert('Error', 'Email is not available on this device');
+      } catch (mailError) {
+        console.error('Mail composer error:', mailError);
+        Alert.alert('Error', `Mail composer failed: ${mailError.message}`);
       }
-
-    } catch (error) {
-      console.error('Export error:', error);
-      Alert.alert('Error', `Failed to export session data: ${error.message}`);
-    } finally {
-      setLoading(false);
+    } else {
+      Alert.alert('Error', 'Email is not available on this device');
     }
-  };
+
+  } catch (error) {
+    console.error('Export error:', error);
+    Alert.alert('Error', `Failed to export session data: ${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleDeleteSession = async (userId, sessionId) => {
     try {
