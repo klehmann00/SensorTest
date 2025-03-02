@@ -8,7 +8,8 @@ import {
   Button,
   Alert,
   TextInput,
-  TouchableOpacity
+  TouchableOpacity,
+  ActivityIndicator  // Add this import
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -30,6 +31,7 @@ import AdminScreen from './AdminScreen';
 import CalibrationManager from './CalibrationManager';
 import SessionManager from './SessionManager';
 import { AdminProvider, useAdmin } from './AdminContext';
+import { Accelerometer } from 'expo-sensors';
 
 // Firebase config
 const firebaseConfig = {
@@ -198,92 +200,112 @@ const SensorScreen = () => {
   const sessionIdRef = useRef(null);
   const dataPointCountRef = useRef(0); // Add this line
 
-  // Handle accelerometer data
+  // Check sensor availability when component loads
+  useEffect(() => {
+    // Check sensor availability at startup
+    SensorDataManager.checkSensorsAvailability().then(availability => {
+      console.log("Sensor availability:", availability);
+    });
+  }, []);
+
+  // Handle accelerometer data - UPDATED function with error handling
+  // Handle accelerometer data - Update this function in App.js
+// Handle accelerometer data
+// Handle accelerometer data
+// Handle accelerometer data
+// Handle accelerometer data
 const handleAccelerometerData = (rawData) => {
-  // Use ref values instead of state
-  const isCurrentlyRecording = recordingRef.current;
-  const currentSessionId = sessionIdRef.current;
-  
-  // If calibrating, add sample
-  if (isCalibrating) {
-    CalibrationManager.addCalibrationSample(rawData);
-    setAccelData(rawData);
-    return;
-  }
-  
-  // Apply calibration if available
-  const calibratedData = CalibrationManager.applyCalibration(rawData);
-  
-  // Process the data (filter and rate limit)
-  const processedData = DataProcessor.processAccelerometerData(calibratedData);
-  
-  // Update state
-  setAccelData(processedData);
-
-  // If recording, store the data - using ref values here
-  if (isCurrentlyRecording && currentSessionId) {
-    const userId = AuthManager.getCurrentUserId();
-    if (userId) {
-      StorageManager.storeAccelerometerData(userId, currentSessionId, processedData);
-    } else {
-      console.log('Cannot record: No user ID available');
+  try {
+    // If calibrating, ONLY focus on adding samples
+    if (isCalibrating) {
+      console.log("CALIBRATION: Adding sample");
+      CalibrationManager.addCalibrationSample(rawData);
+      setAccelData(rawData);
+      return;
     }
+    
+    // Get recording state from refs
+    const isCurrentlyRecording = recordingRef.current;
+    const currentSessionId = sessionIdRef.current;
+    
+    // Normal processing (not during calibration)
+    const calibratedData = CalibrationManager.applyCalibration(rawData);
+    const processedData = DataProcessor.processAccelerometerData(calibratedData);
+    setAccelData(processedData);
+
+    // If recording, store the data
+    if (isCurrentlyRecording && currentSessionId) {
+      const userId = AuthManager.getCurrentUserId();
+      if (userId) {
+        StorageManager.storeAccelerometerData(userId, currentSessionId, processedData);
+      }
+    }
+  } catch (error) {
+    console.error("Error processing accelerometer data:", error);
   }
 };
 
-// Handle gyroscope data
-const handleGyroscopeData = (rawData) => {
-  // Use ref values 
-  const isCurrentlyRecording = recordingRef.current;
-  const currentSessionId = sessionIdRef.current;
-  
-  // Skip processing during calibration
-  if (isCalibrating) {
-    setGyroData(rawData);
-    return;
-  }
-  
-  // Process the data
-  const processedData = DataProcessor.processGyroscopeData(rawData);
-  
-  // Update state
-  setGyroData(processedData);
-  
-  // If recording, store the data - using ref values
-  if (isCurrentlyRecording && currentSessionId) {
-    const userId = AuthManager.getCurrentUserId();
-    if (userId) {
-      StorageManager.storeGyroscopeData(userId, currentSessionId, processedData);
+  // Handle gyroscope data - UPDATED with error handling
+  const handleGyroscopeData = (rawData) => {
+    try {
+      // Use ref values 
+      const isCurrentlyRecording = recordingRef.current;
+      const currentSessionId = sessionIdRef.current;
+      
+      // Skip processing during calibration
+      if (isCalibrating) {
+        setGyroData(rawData);
+        return;
+      }
+      
+      // Process the data
+      const processedData = DataProcessor.processGyroscopeData(rawData);
+      
+      // Update state
+      setGyroData(processedData);
+      
+      // If recording, store the data - using ref values
+      if (isCurrentlyRecording && currentSessionId) {
+        const userId = AuthManager.getCurrentUserId();
+        if (userId) {
+          StorageManager.storeGyroscopeData(userId, currentSessionId, processedData);
+        }
+      }
+    } catch (error) {
+      console.error("Error processing gyroscope data:", error);
     }
-  }
-};
+  };
 
-// Handle magnetometer data
-const handleMagnetometerData = (rawData) => {
-  // Use ref values
-  const isCurrentlyRecording = recordingRef.current;
-  const currentSessionId = sessionIdRef.current;
-  
-  // Skip processing during calibration
-  if (isCalibrating) {
-    setMagData(rawData);
-    return;
-  }
-  
-  // Process the data
-  const processedData = DataProcessor.processMagnetometerData(rawData);
-  
-  // Update state
-  setMagData(processedData);
-  
-  // If recording, store the data - using ref values
-  if (isCurrentlyRecording && currentSessionId) {
-    const userId = AuthManager.getCurrentUserId();
-    if (userId) {
-      StorageManager.storeMagnetometerData(userId, currentSessionId, processedData);
+  // Handle magnetometer data - UPDATED with error handling
+  const handleMagnetometerData = (rawData) => {
+    try {
+      // Use ref values
+      const isCurrentlyRecording = recordingRef.current;
+      const currentSessionId = sessionIdRef.current;
+      
+      // Skip processing during calibration
+      if (isCalibrating) {
+        setMagData(rawData);
+        return;
+      }
+      
+      // Process the data
+      const processedData = DataProcessor.processMagnetometerData(rawData);
+      
+      // Update state
+      setMagData(processedData);
+      
+      // If recording, store the data - using ref values
+      if (isCurrentlyRecording && currentSessionId) {
+        const userId = AuthManager.getCurrentUserId();
+        if (userId) {
+          StorageManager.storeMagnetometerData(userId, currentSessionId, processedData);
+        }
+      }
+    } catch (error) {
+      console.error("Error processing magnetometer data:", error);
     }
-  }
-};
+  };
 
   // Start recording
   const startRecording = async () => {
@@ -321,17 +343,17 @@ const handleMagnetometerData = (rawData) => {
     if (!recordingRef.current) {
       console.log("Recording stopped, clearing interval");
       clearInterval(countInterval);
-    return;
-  }
+      return;
+    }
   
-  try {
+    try {
       console.log(`Counting data points for session ${newSessionId}`);
       const count = await StorageManager.countSessionDataPoints(userId, newSessionId);
       console.log(`Data point count result: ${count}`);
       setDataPointCount(count);
       dataPointCountRef.current = count;
     } catch (error) {
-     console.error("Error counting data points:", error);
+      console.error("Error counting data points:", error);
     }
   }, 1000);
       
@@ -381,44 +403,10 @@ const handleMagnetometerData = (rawData) => {
     setSessionId(null);
   };
   
-  // Start calibration
-  const startCalibration = () => {
-  // Setup calibration callbacks
-  console.log("Setting up calibration callbacks");
-  
-  CalibrationManager.setCallbacks({
-    onCalibrationStart: () => {
-      console.log("onCalibrationStart callback triggered");
-      setIsCalibrating(true);
-      setCalibrationProgress(0);
-      Alert.alert(
-        'Calibration Started',
-        'Please place the device on a flat, level surface and keep it still for 3 seconds.'
-      );
-    },
-    onCalibrationProgress: (progress) => {
-      console.log(`onCalibrationProgress callback: ${progress}`);
-      setCalibrationProgress(progress);
-    },
-    onCalibrationComplete: (matrix) => {
-      console.log("onCalibrationComplete callback triggered");
-      setIsCalibrating(false);
-      Alert.alert('Calibration Complete', 'Device orientation calibrated successfully.');
-      
-      // Reset the data processor with new calibration
-      DataProcessor.reset();
-    },
-    onCalibrationFailed: (error) => {
-      console.log("onCalibrationFailed callback triggered:", error);
-      setIsCalibrating(false);
-      Alert.alert('Calibration Failed', error || 'Could not calibrate device.');
-    }
-  });
-  
-  // Start calibration
-  console.log("Calling CalibrationManager.startCalibration()");
-  CalibrationManager.startCalibration();
-  };
+// startCalibration function:
+const startCalibration = () => {
+  Alert.alert('Calibration', 'Calibration is temporarily disabled');
+};
   
   // Toggle recording
   const toggleRecording = async () => {
@@ -452,28 +440,42 @@ const handleMagnetometerData = (rawData) => {
     setShowProcessed(!showProcessed);
   };
 
-  // Initialize sensors when component mounts
+  // Initialize sensors when component mounts - UPDATED useEffect
   useEffect(() => {
-    // Define callbacks
-    const callbacks = {
-      onAccelerometerUpdate: handleAccelerometerData,
-      onGyroscopeUpdate: handleGyroscopeData,
-      onMagnetometerUpdate: handleMagnetometerData
-    };
-    
-    // Start sensors
-    SensorDataManager.startSensors(callbacks);
-    
-    // Clean up on unmount
-    return () => {
-      // Stop sensors
-      SensorDataManager.stopSensors();
+    try {
+      // Define callbacks
+      const callbacks = {
+        onAccelerometerUpdate: handleAccelerometerData,
+        onGyroscopeUpdate: handleGyroscopeData,
+        onMagnetometerUpdate: handleMagnetometerData
+      };
       
-      // If recording, stop recording
-      if (isRecording) {
-        stopRecording();
-      }
-    };
+      // Start sensors with error handling
+      console.log("Starting sensors...");
+      SensorDataManager.startSensors(callbacks);
+      console.log("Sensors started successfully");
+      
+      // Clean up on unmount
+      return () => {
+        console.log("Cleaning up sensors...");
+        // Stop sensors
+        SensorDataManager.stopSensors();
+        
+        // If recording, stop recording
+        if (isRecording) {
+          stopRecording();
+        }
+        
+        // If calibrating, cancel calibration
+        if (isCalibrating) {
+          CalibrationManager.cancelCalibration();
+          setIsCalibrating(false);
+        }
+      };
+    } catch (error) {
+      console.error("Error starting sensors:", error);
+      Alert.alert('Sensor Error', 'Failed to initialize device sensors. Please restart the app.');
+    }
   }, []);
   
   // Helper function to get bar width for visualization
@@ -484,46 +486,45 @@ const handleMagnetometerData = (rawData) => {
   };
   
   // Component to display sensor data
-  // Component to display sensor data
-const SensorDisplay = ({ title, data, color, scale = 1 }) => {
-  // Safely get values with fallbacks to avoid "toFixed of undefined" errors
-  const getDisplayValue = (obj, prop, fallback = 0) => {
-    if (!obj) return fallback;
-    const value = obj[prop];
-    return value !== undefined && value !== null ? value : fallback;
+  const SensorDisplay = ({ title, data, color, scale = 1 }) => {
+    // Safely get values with fallbacks to avoid "toFixed of undefined" errors
+    const getDisplayValue = (obj, prop, fallback = 0) => {
+      if (!obj) return fallback;
+      const value = obj[prop];
+      return value !== undefined && value !== null ? value : fallback;
+    };
+    
+    // Choose values based on showProcessed setting
+    const xValue = showProcessed 
+      ? getDisplayValue(data, 'filtered_x', getDisplayValue(data, 'x', 0))
+      : getDisplayValue(data, 'raw_x', getDisplayValue(data, 'x', 0));
+      
+    const yValue = showProcessed 
+      ? getDisplayValue(data, 'filtered_y', getDisplayValue(data, 'y', 0))
+      : getDisplayValue(data, 'raw_y', getDisplayValue(data, 'y', 0));
+      
+    const zValue = showProcessed 
+      ? getDisplayValue(data, 'filtered_z', getDisplayValue(data, 'z', 0))
+      : getDisplayValue(data, 'raw_z', getDisplayValue(data, 'z', 0));
+    
+    return (
+      <View style={styles.visualContainer}>
+        <Text style={[styles.sensorTitle, {color}]}>{title}</Text>
+        <View style={styles.axisContainer}>
+          <Text style={styles.axisLabel}>X: {xValue.toFixed(3)}</Text>
+          <View style={[styles.bar, {width: getBarWidth(xValue, scale), backgroundColor: '#E74C3C'}]} />
+        </View>
+        <View style={styles.axisContainer}>
+          <Text style={styles.axisLabel}>Y: {yValue.toFixed(3)}</Text>
+          <View style={[styles.bar, {width: getBarWidth(yValue, scale), backgroundColor: '#27AE60'}]} />
+        </View>
+        <View style={styles.axisContainer}>
+          <Text style={styles.axisLabel}>Z: {zValue.toFixed(3)}</Text>
+          <View style={[styles.bar, {width: getBarWidth(zValue, scale), backgroundColor: '#3498DB'}]} />
+        </View>
+      </View>
+    );
   };
-  
-  // Choose values based on showProcessed setting
-  const xValue = showProcessed 
-    ? getDisplayValue(data, 'filtered_x', getDisplayValue(data, 'x', 0))
-    : getDisplayValue(data, 'raw_x', getDisplayValue(data, 'x', 0));
-    
-  const yValue = showProcessed 
-    ? getDisplayValue(data, 'filtered_y', getDisplayValue(data, 'y', 0))
-    : getDisplayValue(data, 'raw_y', getDisplayValue(data, 'y', 0));
-    
-  const zValue = showProcessed 
-    ? getDisplayValue(data, 'filtered_z', getDisplayValue(data, 'z', 0))
-    : getDisplayValue(data, 'raw_z', getDisplayValue(data, 'z', 0));
-  
-  return (
-    <View style={styles.visualContainer}>
-      <Text style={[styles.sensorTitle, {color}]}>{title}</Text>
-      <View style={styles.axisContainer}>
-        <Text style={styles.axisLabel}>X: {xValue.toFixed(3)}</Text>
-        <View style={[styles.bar, {width: getBarWidth(xValue, scale), backgroundColor: '#E74C3C'}]} />
-      </View>
-      <View style={styles.axisContainer}>
-        <Text style={styles.axisLabel}>Y: {yValue.toFixed(3)}</Text>
-        <View style={[styles.bar, {width: getBarWidth(yValue, scale), backgroundColor: '#27AE60'}]} />
-      </View>
-      <View style={styles.axisContainer}>
-        <Text style={styles.axisLabel}>Z: {zValue.toFixed(3)}</Text>
-        <View style={[styles.bar, {width: getBarWidth(zValue, scale), backgroundColor: '#3498DB'}]} />
-      </View>
-    </View>
-  );
-};
   
   return (
     <ScrollView style={styles.scrollView}>
@@ -538,19 +539,10 @@ const SensorDisplay = ({ title, data, color, scale = 1 }) => {
           <Text style={styles.placeholderText}>G-G Plot goes here</Text>
           {isCalibrating && (
             <View style={styles.calibrationOverlay}>
-              <Text style={styles.calibrationText}>
-                Calibrating... {Math.round(calibrationProgress * 100)}%
-              </Text>
-              <View style={styles.progressContainer}>
-                <View
-                  style={[
-                    styles.progressBar,
-                    { width: `${Math.round(calibrationProgress * 100)}%` }
-                  ]}
-                />
-              </View>
+              <Text style={styles.calibrationText}>Calibrating...</Text>
+              <ActivityIndicator size="large" color="#4ECDC4" />
             </View>
-          )}
+            )}
         </View>
         
         <View style={styles.buttonContainer}>
@@ -609,21 +601,22 @@ const AuthenticatedStack = () => {
         headerTintColor: '#fff',
       }}
     >
-      <Stack.Screen 
-        name="Sensors" 
-        component={SensorScreen} 
-        options={({ navigation }) => ({
-          headerShown: true,
-          headerRight: () => isAdmin ? (
-            <TouchableOpacity 
-              onPress={() => navigation.navigate('Admin')}
-              style={{ marginRight: 15 }}
-            >
-              <Text style={{ color: '#fff' }}>Admin</Text>
-            </TouchableOpacity>
-          ) : null
-        })}
-      />
+<Stack.Screen 
+  name="Sensors" 
+  component={SensorScreen} 
+  options={({ navigation }) => ({
+    headerShown: true,
+    headerRight: () => isAdmin ? (
+      <TouchableOpacity 
+        onPress={() => navigation.navigate('Admin')}
+        style={{ marginRight: 15 }}
+      >
+        <Text style={{ color: '#fff' }}>Admin</Text>
+      </TouchableOpacity>
+    ) : null
+  })}
+/>
+      
       {isAdmin && (
         <Stack.Screen 
           name="Admin" 
@@ -848,6 +841,14 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
+  },
+  calibrationSubText: {
+    color: '#95a5a6',
+    fontSize: 16,
+    marginTop: 20,
+  },
+  spinner: {
+    marginVertical: 20,
   },
   progressContainer: {
     width: '80%',
