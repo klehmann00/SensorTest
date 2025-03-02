@@ -24,11 +24,6 @@ class SensorDataManager {
     console.log('SensorDataManager initialized');
   }
   
-  debug(message) {
-    if (this.debugMode) {
-      console.log(`[SensorData] ${message}`);
-    }
-  }
   
   // Start listening to all sensors with improved error handling
   startSensors(callbacks) {

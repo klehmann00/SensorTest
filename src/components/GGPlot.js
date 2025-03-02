@@ -239,14 +239,6 @@ export default function GGPlot({
           />
         )}
       </Svg>
-      
-      {/* Debug values at the bottom */}
-      <View style={styles.debugInfo}>
-        <Text style={styles.debugText}>
-          Raw: ({processedData?.raw_x?.toFixed(3) || 0}, {processedData?.raw_y?.toFixed(3) || 0}) | 
-          Processed: ({longitudinalValue.toFixed(3)}, {lateralValue.toFixed(3)})
-        </Text>
-      </View>
     </View>
   );
 }
@@ -261,17 +253,6 @@ const styles = StyleSheet.create({
     borderColor: 'white',
     width: '100%',
     alignItems: 'center',
-  },
-  debugInfo: {
-    marginTop: 5,
-    padding: 5,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 5,
-    width: '100%',
-  },
-  debugText: {
-    color: 'white',
-    fontSize: 10,
-    fontFamily: 'monospace',
   }
+
 });

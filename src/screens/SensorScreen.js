@@ -17,6 +17,7 @@ import AuthManager from '../services/AuthManager';
 import CalibrationManager from '../managers/CalibrationManager';
 import SensorDisplay from '../components/SensorDisplay';
 import { Accelerometer } from 'expo-sensors';
+import GGPlot from '../components/GGPlot';
 
 const SensorScreen = () => {
   const { isAdmin } = useAdmin();
@@ -45,6 +46,8 @@ const SensorScreen = () => {
   // Handle accelerometer data
   const handleAccelerometerData = (rawData) => {
     try {
+      console.log("Raw accel data:", JSON.stringify(rawData));
+
       if (isCalibrating) {
         console.log("CALIBRATION: Adding sample");
         CalibrationManager.addCalibrationSample(rawData);
@@ -57,6 +60,7 @@ const SensorScreen = () => {
       
       const calibratedData = CalibrationManager.applyCalibration(rawData);
       const processedData = DataProcessor.processAccelerometerData(calibratedData);
+      
       setAccelData(processedData);
 
       if (isCurrentlyRecording && currentSessionId) {
@@ -145,25 +149,25 @@ const SensorScreen = () => {
       DataProcessor.reset();
       
       const countInterval = setInterval(async () => {
-      console.log(`Count interval fired, recording: ${recordingRef.current}, sessionId: ${sessionIdRef.current}`);
-    
-      if (!recordingRef.current) {
-        console.log("Recording stopped, clearing interval");
-        clearInterval(countInterval);
-        return;
-      }
-    
-      try {
-        console.log(`Counting data points for session ${newSessionId}`);
-        const count = await StorageManager.countSessionDataPoints(userId, newSessionId);
-        console.log(`Data point count result: ${count}`);
-        setDataPointCount(count);
-        dataPointCountRef.current = count;
-      } catch (error) {
-        console.error("Error counting data points:", error);
-      }
-    }, 1000);
-        
+        console.log(`Count interval fired, recording: ${recordingRef.current}, sessionId: ${sessionIdRef.current}`);
+      
+        if (!recordingRef.current) {
+          console.log("Recording stopped, clearing interval");
+          clearInterval(countInterval);
+          return;
+        }
+      
+        try {
+          console.log(`Counting data points for session ${newSessionId}`);
+          const count = await StorageManager.countSessionDataPoints(userId, newSessionId);
+          console.log(`Data point count result: ${count}`);
+          setDataPointCount(count);
+          dataPointCountRef.current = count;
+        } catch (error) {
+          console.error("Error counting data points:", error);
+        }
+      }, 1000);
+          
       return countInterval;
     } else {
       Alert.alert('Error', 'Failed to start recording session');
@@ -275,15 +279,25 @@ const SensorScreen = () => {
           <Text style={styles.dataCount}>Data points collected: {dataPointCount}</Text>
         )}
         
-        <View style={styles.ggPlotPlaceholder}>
-          <Text style={styles.placeholderText}>G-G Plot goes here</Text>
-          {isCalibrating && (
-            <View style={styles.calibrationOverlay}>
-              <Text style={styles.calibrationText}>Calibrating...</Text>
-              <ActivityIndicator size="large" color="#4ECDC4" />
-            </View>
-          )}
-        </View>
+        <GGPlot 
+          processedData={{
+            processed_lateral: accelData.filtered_y || accelData.limited_y || accelData.y || 0,
+            processed_longitudinal: accelData.filtered_x || accelData.limited_x || accelData.x || 0,
+            processed_vertical: accelData.filtered_z || accelData.limited_z || accelData.z || 0,
+            raw_x: accelData.raw_x || accelData.x || 0,
+            raw_y: accelData.raw_y || accelData.y || 0,
+            raw_z: accelData.raw_z || accelData.z || 0
+          }}
+          maxG={1} 
+          isCalibrating={isCalibrating}
+        />
+        
+        {isCalibrating && (
+          <View style={styles.calibrationOverlay}>
+            <Text style={styles.calibrationText}>Calibrating...</Text>
+            <ActivityIndicator size="large" color="#4ECDC4" />
+          </View>
+        )}
         
         <View style={styles.buttonContainer}>
           <Button 
@@ -298,14 +312,12 @@ const SensorScreen = () => {
             color="#3498DB"
             disabled={isCalibrating || isRecording}
           />
-
           <Button 
             title={showProcessed ? "Show Raw" : "Show Processed"} 
             onPress={toggleDataProcessing} 
             color="#9B59B6"
             disabled={isCalibrating}
           />
-
           <Button 
             title="Open Web Display" 
             onPress={openWebView}
@@ -349,22 +361,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     marginBottom: 10,
-  },
-  ggPlotPlaceholder: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 15,
-    padding: 10,
-    marginVertical: 10,
-    borderWidth: 1,
-    borderColor: 'white',
-    width: '100%',
-    height: 300,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeholderText: {
-    color: 'white',
-    fontSize: 18,
   },
   calibrationOverlay: {
     position: 'absolute',

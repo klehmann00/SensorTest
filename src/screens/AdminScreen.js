@@ -11,8 +11,8 @@ import {
   Platform
 } from 'react-native';
 import { getDatabase, ref, get, set } from 'firebase/database';
-import { useAdmin } from './AdminContext';
-import { exportSessionData } from './DataExport';
+import { useAdmin } from '../contexts/AdminContext';
+import { exportSessionData } from '../services/DataExport';
 import * as FileSystem from 'expo-file-system';
 import * as MailComposer from 'expo-mail-composer';
 
