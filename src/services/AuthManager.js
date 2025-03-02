@@ -9,7 +9,7 @@ import {
   onAuthStateChanged
 } from 'firebase/auth';
 import { getDatabase, ref, set, get } from 'firebase/database';
-import SessionManager from './SessionManager';
+import SessionManager from './src/managers/SessionManager';
 
 class AuthManager {
   constructor() {
