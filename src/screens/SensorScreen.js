@@ -18,6 +18,8 @@ import CalibrationManager from '../managers/CalibrationManager';
 import SensorDisplay from '../components/SensorDisplay';
 import { Accelerometer } from 'expo-sensors';
 import GGPlot from '../components/GGPlot';
+import CalibrationProcessor from '../processors/CalibrationProcessor';
+
 
 const SensorScreen = () => {
   const { isAdmin } = useAdmin();
@@ -35,22 +37,63 @@ const SensorScreen = () => {
   const recordingRef = useRef(false);
   const sessionIdRef = useRef(null);
   const dataPointCountRef = useRef(0);
+ // Add this new ref here with your other refs
+  const isCalibratingRef = useRef(false);
+  
+ // Add this new useEffect hook along with your other hooks
+    useEffect(() => {
+      isCalibratingRef.current = isCalibrating;
+    }, [isCalibrating]);
 
   // Check sensor availability when component loads
   useEffect(() => {
     SensorDataManager.checkSensorsAvailability().then(availability => {
       console.log("Sensor availability:", availability);
+
     });
+
+    // Register calibration callbacks
+  CalibrationProcessor.registerCallbacks({
+    onCalibrationStarted: () => {
+      setIsCalibrating(true);
+      setCalibrationProgress(0);
+      console.log("Calibration started");
+    },
+    onCalibrationProgress: (progress) => {
+      setCalibrationProgress(progress);
+      console.log(`Calibration progress: ${(progress * 100).toFixed(0)}%`);
+    },
+    onCalibrationCompleted: (result) => {
+      setIsCalibrating(false);
+      console.log("Calibration completed:", result);
+      Alert.alert(
+        'Calibration Complete',
+        `Calibration completed with ${result.sampleCount} samples.`
+      );
+    },
+    onCalibrationCancelled: () => {
+      setIsCalibrating(false);
+      setCalibrationProgress(0);
+      console.log("Calibration cancelled");
+      Alert.alert('Calibration Cancelled', 'Calibration process was cancelled.');
+    }
+  });
   }, []);
 
   // Handle accelerometer data
   const handleAccelerometerData = (rawData) => {
     try {
-      console.log("Raw accel data:", JSON.stringify(rawData));
 
-      if (isCalibrating) {
-        console.log("CALIBRATION: Adding sample");
-        CalibrationManager.addCalibrationSample(rawData);
+      if (isCalibratingRef.current) {
+        console.log("CALIBRATION: Handler received data during calibration");
+
+        // Add a try/catch to see if there's an error
+      try {
+        CalibrationProcessor.addCalibrationSample(rawData);
+        console.log("Sample added successfully");
+      } catch (error) {
+        console.error("Error adding calibration sample:", error);
+      }
         setAccelData(rawData);
         return;
       }
@@ -58,11 +101,11 @@ const SensorScreen = () => {
       const isCurrentlyRecording = recordingRef.current;
       const currentSessionId = sessionIdRef.current;
       
-      const calibratedData = CalibrationManager.applyCalibration(rawData);
+      const calibratedData = CalibrationProcessor.applyCalibration(rawData);
       const processedData = DataProcessor.processAccelerometerData(calibratedData);
-      
+            
       setAccelData(processedData);
-
+  
       if (isCurrentlyRecording && currentSessionId) {
         const userId = AuthManager.getCurrentUserId();
         if (userId) {
@@ -206,7 +249,14 @@ const SensorScreen = () => {
   
   // Start calibration
   const startCalibration = () => {
-    Alert.alert('Calibration', 'Calibration is temporarily disabled');
+    const success = CalibrationProcessor.startCalibration();
+    
+    if (!success) {
+      Alert.alert('Calibration Error', 'Could not start calibration. Is one already in progress?');
+    } else {
+      // The UI will be updated via the callbacks registered in useEffect
+      console.log('Calibration started successfully');
+    }
   };
   
   // Toggle recording
@@ -261,7 +311,7 @@ const SensorScreen = () => {
         }
         
         if (isCalibrating) {
-          CalibrationManager.cancelCalibration();
+          CalibrationProcessor.cancelCalibration();
           setIsCalibrating(false);
         }
       };
@@ -270,6 +320,22 @@ const SensorScreen = () => {
       Alert.alert('Sensor Error', 'Failed to initialize device sensors. Please restart the app.');
     }
   }, []);
+
+  // Add safety timeout for calibration - NEW USEEFFECT HOOK
+  // Replace the safety timeout useEffect with this simpler version:
+  useEffect(() => {
+    if (isCalibrating) {
+      console.log("Setting up calibration safety timeout");
+      const timer = setTimeout(() => {
+        console.log("Calibration safety timeout triggered");
+        // Directly set state instead of calling the method
+        setIsCalibrating(false);
+        Alert.alert('Calibration Timeout', 'Calibration timed out after 10 seconds.');
+      }, 10000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isCalibrating]);
 
   return (
     <ScrollView style={styles.scrollView}>
@@ -295,6 +361,9 @@ const SensorScreen = () => {
         {isCalibrating && (
           <View style={styles.calibrationOverlay}>
             <Text style={styles.calibrationText}>Calibrating...</Text>
+            <Text style={styles.calibrationSubText}>
+              {Math.round(calibrationProgress * 100)}% Complete
+            </Text>
             <ActivityIndicator size="large" color="#4ECDC4" />
           </View>
         )}
@@ -330,6 +399,22 @@ const SensorScreen = () => {
             color="#E74C3C"
             disabled={isCalibrating}
           />
+
+// Add this button to your SensorScreen.js UI, near your other buttons:
+          <Button 
+            title="Add Cal Sample"
+            onPress={() => {
+              if (isCalibrating) {
+                console.log("Manually adding calibration sample");
+                CalibrationProcessor.addCalibrationSample(accelData);
+              } else {
+                Alert.alert('Not Calibrating', 'Start calibration first.');
+              }
+            }}
+            color="#FF9500"
+            disabled={!isCalibrating}
+          />
+
         </View>
         
         <SensorDisplay title="Accelerometer (G)" data={accelData} color="#FF6B6B" scale={1} showProcessed={showProcessed} />
@@ -378,6 +463,11 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
+  },
+  calibrationSubText: {
+    color: 'white',
+    fontSize: 16,
+    marginBottom: 15,
   },
   buttonContainer: {
     flexDirection: 'row',
