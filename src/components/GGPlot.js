@@ -1,16 +1,30 @@
-// GGPlot.js - Visualization component
+// src/components/GGPlot.js (Enhanced Version)
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Dimensions, Text } from 'react-native';
-import Svg, { Circle, Line, Text as SvgText, Rect } from 'react-native-svg';
+import Svg, { Circle, Line, Text as SvgText, Rect, Ellipse, Path } from 'react-native-svg';
 import * as Location from 'expo-location';
+import VehicleDynamics from '../utils/VehicleDynamics';
+import ConfigurationManager from '../managers/ConfigurationManager';
 
 export default function GGPlot({ 
   processedData, 
-  maxG = 1, 
   isCalibrating = false 
 }) {
   const [speed, setSpeed] = useState(0);
   const [heading, setHeading] = useState(0);
+  
+  // Get configuration
+  const [maxG, setMaxG] = useState(
+    ConfigurationManager.getValue('visualization', 'maxGDisplay') || 1.0
+  );
+  const [showTractionCircle, setShowTractionCircle] = useState(
+    ConfigurationManager.getValue('visualization', 'showTractionCircle') || true
+  );
+  
+  // Get vehicle performance values
+  const [vehicleConfig, setVehicleConfig] = useState(
+    ConfigurationManager.getCategory('vehicle')
+  );
 
   const width = Dimensions.get('window').width - 40;
   const height = width;
@@ -54,7 +68,38 @@ export default function GGPlot({
       }
     };
   }, []);
+  
+  // Update config when ConfigurationManager changes
+  useEffect(() => {
+    const refreshConfig = async () => {
+      await ConfigurationManager.loadConfiguration();
+      setMaxG(ConfigurationManager.getValue('visualization', 'maxGDisplay') || 1.0);
+      setShowTractionCircle(ConfigurationManager.getValue('visualization', 'showTractionCircle') || true);
+      setVehicleConfig(ConfigurationManager.getCategory('vehicle'));
+    };
+    
+    refreshConfig();
+  }, []);
 
+    // Add the new debugging useEffect right here
+    useEffect(() => {
+      if (processedData) {
+        console.log('GGPlot received data:', {
+          raw: {
+            x: processedData.raw_x || 'N/A',
+            y: processedData.raw_y || 'N/A',
+            z: processedData.raw_z || 'N/A'
+          },
+          processed: {
+            x: processedData.processed_longitudinal || processedData.x || 'N/A',
+            y: processedData.processed_lateral || processedData.y || 'N/A',
+            z: processedData.processed_vertical || processedData.z || 'N/A'
+          },
+          hasTransformerMarker: processedData.marker === 'transformed-by-coordinate-transformer'
+        });
+      }
+    }, [processedData]);
+  
   const gToPixel = (g, isX) => {
     const scale = isX ? plotWidth : plotHeight;
     return padding + (scale / 2) + (g * scale / (2 * maxG));
@@ -205,54 +250,216 @@ export default function GGPlot({
       </>
     );
   };
-
-  // Get processed values
-  const lateralValue = processedData?.processed_lateral || 0;
-  const longitudinalValue = processedData?.processed_longitudinal || 0;
-
-  const currentPoint = {
-    x: gToPixel(lateralValue, true),
-    y: gToPixel(-longitudinalValue, false)
-  };
-
-  return (
-    <View style={styles.container}>
-      <Svg width={width} height={height}>
-        {renderAxes()}
-        <Circle
-          cx={currentPoint.x}
-          cy={currentPoint.y}
-          r="4"
-          fill="#FF6B6B"
+  
+  const renderTractionCircle = () => {
+    if (!showTractionCircle) return null;
+    
+    const centerX = padding + plotWidth / 2;
+    const centerY = padding + plotHeight / 2;
+    
+    // Calculate size of the traction ellipse based on vehicle performance
+    const maxLateral = vehicleConfig.maxLateral;
+    const maxAccel = vehicleConfig.maxAcceleration;
+    const maxBraking = vehicleConfig.maxBraking;
+    
+    // Scale factors for the plot
+    const lateralScale = (plotWidth / 2) / maxG;
+    const accelScale = (plotHeight / 2) / maxG;
+    const brakeScale = (plotHeight / 2) / maxG;
+    
+    // Calculate ellipse radii in screen coordinates
+    const radiusX = maxLateral * lateralScale;
+    const radiusYTop = maxAccel * accelScale;
+    const radiusYBottom = maxBraking * brakeScale;
+    
+    // Create the paths for the top and bottom halves of the traction ellipse
+    const createHalfEllipsePath = (rx, ry, top) => {
+      // For top half, we go from -180° to 0°
+      // For bottom half, we go from 0° to 180°
+      const startAngle = top ? Math.PI : 0;
+      const endAngle = top ? 0 : Math.PI;
+      const sweepFlag = 1; // Always draw in a clockwise direction
+      
+      // Start point
+      const startX = centerX + rx * Math.cos(startAngle);
+      const startY = centerY + ry * Math.sin(startAngle);
+      
+      // End point
+      const endX = centerX + rx * Math.cos(endAngle);
+      const endY = centerY + ry * Math.sin(endAngle);
+      
+      return `M ${startX} ${startY} A ${rx} ${ry} 0 0 ${sweepFlag} ${endX} ${endY}`;
+    };
+    
+    // Create paths for the top and bottom halves of the ellipse
+    const topPath = createHalfEllipsePath(radiusX, radiusYTop, true);
+    const bottomPath = createHalfEllipsePath(radiusX, radiusYBottom, false);
+    
+    // Calculate metrics using VehicleDynamics
+    const tractionCircle = VehicleDynamics.calculateTractionCircle(processedData);
+    const intensity = tractionCircle / 100; // 0 to 1
+    
+    // Get color based on traction utilization
+    const getCircleColor = (value) => {
+      if (value <= 0.5) {
+        // Green to yellow
+        const g = 255;
+        const r = Math.round(255 * (value * 2));
+        return `rgba(${r}, ${g}, 0, 0.3)`;
+      } else {
+        // Yellow to red
+        const r = 255;
+        const g = Math.round(255 * (1 - (value - 0.5) * 2));
+        return `rgba(${r}, ${g}, 0, 0.3)`;
+      }
+    };
+    
+    return (
+      <>
+        {/* Traction Ellipse */}
+        <Path
+          d={topPath}
+          stroke="rgba(255, 255, 255, 0.5)"
+          strokeWidth="1"
+          fill="none"
+        />
+        <Path
+          d={bottomPath}
+          stroke="rgba(255, 255, 255, 0.5)"
+          strokeWidth="1"
+          fill="none"
         />
         
-        {/* Visual indicator during calibration */}
-        {isCalibrating && (
-          <Rect
-            x={padding}
-            y={padding}
-            width={plotWidth}
-            height={plotHeight}
-            fill="rgba(76, 209, 196, 0.3)"
-            stroke="#4ECDC4"
-            strokeWidth="2"
-          />
-        )}
-      </Svg>
-    </View>
-  );
+        {/* Percentage circles - 25%, 50%, 75% */}
+        <Circle
+          cx={centerX}
+          cy={centerY}
+          r={Math.min(radiusX, radiusYTop) * 0.25}
+          stroke="rgba(255, 255, 255, 0.3)"
+          strokeWidth="1"
+          strokeDasharray="2,2"
+          fill="none"
+        />
+        <Circle
+          cx={centerX}
+          cy={centerY}
+          r={Math.min(radiusX, radiusYTop) * 0.5}
+          stroke="rgba(255, 255, 255, 0.3)"
+          strokeWidth="1"
+          strokeDasharray="2,2"
+          fill="none"
+        />
+        <Circle
+          cx={centerX}
+          cy={centerY}
+          r={Math.min(radiusX, radiusYTop) * 0.75}
+          stroke="rgba(255, 255, 255, 0.3)"
+          strokeWidth="1"
+          strokeDasharray="2,2"
+          fill="none"
+        />
+        
+        {/* Current traction circle utilized */}
+        <Circle
+          cx={centerX}
+          cy={centerY}
+          r={Math.min(radiusX, radiusYTop) * intensity}
+          fill={getCircleColor(intensity)}
+          stroke={getCircleColor(1)}
+          strokeWidth="1"
+        />
+        
+        {/* Traction utilization text */}
+        <SvgText
+          x={padding + 10}
+          y={height - padding - 30}
+          fill="white"
+          fontSize="12"
+          textAnchor="start"
+        >
+          Grip Used:
+        </SvgText>
+        <SvgText
+          x={padding + 80}
+          y={height - padding - 30}
+          fill={getCircleColor(1).replace('0.3', '1')}
+          fontSize="12"
+          fontWeight="bold"
+          textAnchor="start"
+        >
+          {tractionCircle.toFixed(0)}%
+        </SvgText>
+      </>
+    );
+  };
+
+// Get processed values
+const lateralValue = processedData?.processed_lateral || processedData?.lateral || processedData?.y || 0;
+const longitudinalValue = processedData?.processed_longitudinal || processedData?.longitudinal || processedData?.x || 0;
+
+// Calculate point coordinates
+const currentPoint = {
+  x: gToPixel(lateralValue, true),
+  y: gToPixel(-longitudinalValue, false)
+};
+
+// Get dynamics information and colors
+const dynamics = VehicleDynamics.calculateDynamics(processedData, speed);
+const pointColor = dynamics ? dynamics.lateralColor : "#FF6B6B";
+
+return (
+  <View style={styles.container}>
+    <Svg width={width} height={height}>
+      {/* Draw traction circle first so it's behind everything else */}
+      {renderTractionCircle()}
+      
+      {/* Draw coordinate axes */}
+      {renderAxes()}
+      
+      {/* Draw vector from center to current point */}
+      <Line
+        x1={padding + plotWidth / 2}
+        y1={padding + plotHeight / 2}
+        x2={currentPoint.x}
+        y2={currentPoint.y}
+        stroke={pointColor}
+        strokeWidth="2"
+      />
+      
+      {/* Draw current point */}
+      <Circle
+        cx={currentPoint.x}
+        cy={currentPoint.y}
+        r="5"
+        fill={pointColor}
+      />
+      
+      {/* Visual indicator during calibration */}
+      {isCalibrating && (
+        <Rect
+          x={padding}
+          y={padding}
+          width={plotWidth}
+          height={plotHeight}
+          fill="rgba(76, 209, 196, 0.3)"
+          stroke="#4ECDC4"
+          strokeWidth="2"
+        />
+      )}
+    </Svg>
+  </View>
+);
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 15,
-    padding: 10,
-    marginVertical: 10,
-    borderWidth: 1,
-    borderColor: 'white',
-    width: '100%',
-    alignItems: 'center',
-  }
-
+container: {
+  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  borderRadius: 15,
+  padding: 10,
+  marginVertical: 10,
+  borderWidth: 1,
+  borderColor: 'white',
+  width: '100%',
+  alignItems: 'center',
+}
 });

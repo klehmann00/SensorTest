@@ -19,7 +19,8 @@ import SensorDisplay from '../components/SensorDisplay';
 import { Accelerometer } from 'expo-sensors';
 import GGPlot from '../components/GGPlot';
 import CalibrationProcessor from '../processors/CalibrationProcessor';
-
+import SensorProcessor from '../processors/SensorProcessor';
+import ConfigurationManager from '../managers/ConfigurationManager';
 
 const SensorScreen = () => {
   const { isAdmin } = useAdmin();
@@ -37,8 +38,40 @@ const SensorScreen = () => {
   const recordingRef = useRef(false);
   const sessionIdRef = useRef(null);
   const dataPointCountRef = useRef(0);
- // Add this new ref here with your other refs
   const isCalibratingRef = useRef(false);
+  const [isCalibrated, setIsCalibrated] = useState(false);
+  const [calibrationDescription, setCalibrationDescription] = useState('Not calibrated');
+  const [calibrationOffsetX, setCalibrationOffsetX] = useState(0);
+  const [calibrationOffsetY, setCalibrationOffsetY] = useState(0);  
+ 
+  // Add this new useEffect hook for system initialization
+   useEffect(() => {
+    const initializeSystem = async () => {
+      try {
+        // Initialize the configuration
+        await ConfigurationManager.loadConfiguration();
+        
+        // Initialize the calibration system and load saved calibration
+        const calibrationLoaded = await CalibrationManager.initialize();
+        setIsCalibrated(calibrationLoaded);
+        
+        if (calibrationLoaded) {
+          console.log('Loaded saved calibration');
+          const summary = CalibrationManager.getCalibrationSummary();
+          setCalibrationDescription(summary.rotationDescription);
+        } else {
+          console.log('No calibration loaded');
+        }
+        
+        // Initialize the SensorProcessor
+        SensorProcessor.initialize();
+      } catch (error) {
+        console.error('Error initializing systems:', error);
+      }
+    };
+    
+    initializeSystem();
+  }, []);
   
  // Add this new useEffect hook along with your other hooks
     useEffect(() => {
@@ -53,31 +86,52 @@ const SensorScreen = () => {
     });
 
     // Register calibration callbacks
-  CalibrationProcessor.registerCallbacks({
-    onCalibrationStarted: () => {
-      setIsCalibrating(true);
-      setCalibrationProgress(0);
-      console.log("Calibration started");
-    },
-    onCalibrationProgress: (progress) => {
-      setCalibrationProgress(progress);
-      console.log(`Calibration progress: ${(progress * 100).toFixed(0)}%`);
-    },
-    onCalibrationCompleted: (result) => {
-      setIsCalibrating(false);
-      console.log("Calibration completed:", result);
-      Alert.alert(
-        'Calibration Complete',
-        `Calibration completed with ${result.sampleCount} samples.`
-      );
-    },
-    onCalibrationCancelled: () => {
-      setIsCalibrating(false);
-      setCalibrationProgress(0);
-      console.log("Calibration cancelled");
-      Alert.alert('Calibration Cancelled', 'Calibration process was cancelled.');
-    }
-  });
+    CalibrationProcessor.registerCallbacks({
+      onCalibrationStarted: () => {
+        setIsCalibrating(true);
+        setCalibrationProgress(0);
+        console.log("Calibration started");
+      },
+      onCalibrationProgress: (progress) => {
+        setCalibrationProgress(progress);
+        console.log(`Calibration progress: ${(progress * 100).toFixed(0)}%`);
+      },
+      onCalibrationCompleted: async (result) => {
+        setIsCalibrating(false);
+        console.log("Calibration completed:", result);
+        
+        // Save calibration matrix if successful
+        if (result.success) {
+          // Apply the calibration matrix to CoordinateTransformer
+          const saved = await CalibrationManager.saveCalibrationMatrix(result.matrix);
+          setIsCalibrated(saved);
+          
+          const summary = CalibrationManager.getCalibrationSummary();
+          setCalibrationDescription(summary.rotationDescription);
+          
+          // Make sure the SensorProcessor knows to use calibration
+          SensorProcessor.setCalibration(true);
+          
+          Alert.alert(
+            'Calibration Complete',
+            `Calibration completed with ${result.sampleCount} samples.\n\n` +
+            `Device orientation: ${summary.rotationDescription}`
+          );
+        } else {
+          Alert.alert(
+            'Calibration Complete',
+            `Calibration completed but couldn't determine orientation.\n` +
+            `Try again with the device positioned securely.`
+          );
+        }
+      },
+      onCalibrationCancelled: () => {
+        setIsCalibrating(false);
+        setCalibrationProgress(0);
+        console.log("Calibration cancelled");
+        Alert.alert('Calibration Cancelled', 'Calibration process was cancelled.');
+      }
+    });
   }, []);
 
   // Handle accelerometer data
@@ -100,10 +154,9 @@ const SensorScreen = () => {
       
       const isCurrentlyRecording = recordingRef.current;
       const currentSessionId = sessionIdRef.current;
+
+      const processedData = SensorProcessor.processAccelerometerData(rawData);
       
-      const calibratedData = CalibrationProcessor.applyCalibration(rawData);
-      const processedData = DataProcessor.processAccelerometerData(calibratedData);
-            
       setAccelData(processedData);
   
       if (isCurrentlyRecording && currentSessionId) {
@@ -248,16 +301,101 @@ const SensorScreen = () => {
   };
   
   // Start calibration
-  const startCalibration = () => {
-    const success = CalibrationProcessor.startCalibration();
-    
-    if (!success) {
-      Alert.alert('Calibration Error', 'Could not start calibration. Is one already in progress?');
+  // Start calibration
+const startCalibration = () => {
+  // Initial state setup
+  setIsCalibrating(true);
+  setCalibrationProgress(0);
+  
+  // Start the sample collection process
+  const sampleCount = 30;
+  const samples = [];
+  let progress = 0;
+  
+  // Get a reference to the current acceleration values
+  const initialX = accelData.x || 0;
+  const initialY = accelData.y || 0;
+  
+  // Set these immediately for quick feedback
+  setCalibrationOffsetX(initialX);
+  setCalibrationOffsetY(initialY);
+  setIsCalibrated(true);  // Enable calibration effect immediately
+  
+  // Sample collection interval
+  const sampleInterval = setInterval(() => {
+    if (samples.length < sampleCount) {
+      // Add current data as a sample
+      samples.push({
+        x: accelData.x,
+        y: accelData.y,
+        z: accelData.z
+      });
+      
+      // Update progress
+      progress = samples.length / sampleCount;
+      setCalibrationProgress(progress);
+      
+      // Update calibration with average as we go
+      const sumX = samples.reduce((sum, s) => sum + s.x, 0);
+      const sumY = samples.reduce((sum, s) => sum + s.y, 0);
+      
+      setCalibrationOffsetX(sumX / samples.length);
+      setCalibrationOffsetY(sumY / samples.length);
     } else {
-      // The UI will be updated via the callbacks registered in useEffect
-      console.log('Calibration started successfully');
+      // Done collecting samples
+      clearInterval(sampleInterval);
+      
+      // Calculate final averages
+      const avgX = samples.reduce((sum, s) => sum + s.x, 0) / samples.length;
+      const avgY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
+      
+      // Set final calibration values
+      setCalibrationOffsetX(avgX);
+      setCalibrationOffsetY(avgY);
+      setIsCalibrated(true);
+      setIsCalibrating(false);
+      
+      // Save calibration data for persistence
+      const calibrationData = {
+        calibrationOffsetX: avgX,
+        calibrationOffsetY: avgY
+      };
+      
+      // Optional: save to CalibrationManager for persistence
+      // CalibrationManager.saveCalibrationMatrix(calibrationData);
+      
+      Alert.alert(
+        'Calibration Complete',
+        `Calibration completed with ${samples.length} samples.\n\n` +
+        `Device orientation will now be considered "zero".`
+      );
     }
-  };
+  }, 100); // Sample every 100ms
+  
+  // Safety timeout
+  setTimeout(() => {
+    if (isCalibrating) {
+      clearInterval(sampleInterval);
+      
+      // Use whatever samples we got
+      if (samples.length > 0) {
+        const avgX = samples.reduce((sum, s) => sum + s.x, 0) / samples.length;
+        const avgY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
+        
+        setCalibrationOffsetX(avgX);
+        setCalibrationOffsetY(avgY);
+        setIsCalibrated(true);
+      }
+      
+      setIsCalibrating(false);
+      
+      Alert.alert(
+        'Calibration Complete',
+        `Calibration completed with ${samples.length} samples.`
+      );
+    }
+  }, 5000); // 5 second timeout
+};
   
   // Toggle recording
   const toggleRecording = async () => {
@@ -346,17 +484,20 @@ const SensorScreen = () => {
         )}
         
         <GGPlot 
-          processedData={{
-            processed_lateral: accelData.filtered_y || accelData.limited_y || accelData.y || 0,
-            processed_longitudinal: accelData.filtered_x || accelData.limited_x || accelData.x || 0,
-            processed_vertical: accelData.filtered_z || accelData.limited_z || accelData.z || 0,
-            raw_x: accelData.raw_x || accelData.x || 0,
-            raw_y: accelData.raw_y || accelData.y || 0,
-            raw_z: accelData.raw_z || accelData.z || 0
-          }}
-          maxG={1} 
-          isCalibrating={isCalibrating}
-        />
+  processedData={{
+    // Apply calibration directly using the offset values
+    processed_lateral: isCalibrated ? (accelData.y - calibrationOffsetY) : accelData.y || 0,
+    processed_longitudinal: isCalibrated ? (accelData.x - calibrationOffsetX) : accelData.x || 0,
+    processed_vertical: accelData.z || -1,
+    
+    // Still pass the raw values for reference
+    raw_x: accelData.x || 0,
+    raw_y: accelData.y || 0,
+    raw_z: accelData.z || 0
+  }}
+  maxG={1} 
+  isCalibrating={isCalibrating}
+/>
         
         {isCalibrating && (
           <View style={styles.calibrationOverlay}>
@@ -400,7 +541,6 @@ const SensorScreen = () => {
             disabled={isCalibrating}
           />
 
-// Add this button to your SensorScreen.js UI, near your other buttons:
           <Button 
             title="Add Cal Sample"
             onPress={() => {
