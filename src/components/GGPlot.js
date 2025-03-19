@@ -8,7 +8,9 @@ import ConfigurationManager from '../managers/ConfigurationManager';
 
 export default function GGPlot({ 
   processedData, 
-  isCalibrating = false 
+  isCalibrating = false,
+  showProcessed = true
+ 
 }) {
   const [speed, setSpeed] = useState(0);
   const [heading, setHeading] = useState(0);
@@ -81,24 +83,11 @@ export default function GGPlot({
     refreshConfig();
   }, []);
 
-    // Add the new debugging useEffect right here
+
     useEffect(() => {
-      if (processedData) {
-        console.log('GGPlot received data:', {
-          raw: {
-            x: processedData.raw_x || 'N/A',
-            y: processedData.raw_y || 'N/A',
-            z: processedData.raw_z || 'N/A'
-          },
-          processed: {
-            x: processedData.processed_longitudinal || processedData.x || 'N/A',
-            y: processedData.processed_lateral || processedData.y || 'N/A',
-            z: processedData.processed_vertical || processedData.z || 'N/A'
-          },
-          hasTransformerMarker: processedData.marker === 'transformed-by-coordinate-transformer'
-        });
-      }
-    }, [processedData]);
+      console.log(`GGPlot display mode: ${showProcessed ? 'Processed' : 'Raw'}`);
+    }, [showProcessed]);
+    
   
   const gToPixel = (g, isX) => {
     const scale = isX ? plotWidth : plotHeight;
@@ -296,7 +285,7 @@ export default function GGPlot({
     const bottomPath = createHalfEllipsePath(radiusX, radiusYBottom, false);
     
     // Calculate metrics using VehicleDynamics
-    const tractionCircle = VehicleDynamics.calculateTractionCircle(processedData);
+    const tractionCircle = VehicleDynamics.calculateTractionCircle(processedData, showProcessed);
     const intensity = tractionCircle / 100; // 0 to 1
     
     // Get color based on traction utilization
@@ -394,17 +383,27 @@ export default function GGPlot({
   };
 
 // Get processed values
-const lateralValue = processedData?.processed_lateral || processedData?.lateral || processedData?.y || 0;
-const longitudinalValue = processedData?.processed_longitudinal || processedData?.longitudinal || processedData?.x || 0;
+// Get values based on showProcessed prop
+const lateralValue = showProcessed 
+  ? (processedData?.filtered_y || 0)  // Filtered value in Processed mode
+  : (processedData?.lateral || 0);    // Calibrated but unfiltered in Raw mode
 
-// Calculate point coordinates
+const longitudinalValue = showProcessed 
+  ? (processedData?.filtered_x || 0)  // Filtered value in Processed mode
+  : (processedData?.longitudinal || 0);  // Calibrated but unfiltered in Raw mode
+
+const verticalValue = showProcessed
+  ? (processedData?.filtered_z || 0)  // Filtered value in Processed mode
+  : (processedData?.vertical || 0);   // Calibrated but unfiltered in Raw mode
+
+  // Calculate point coordinates
 const currentPoint = {
   x: gToPixel(lateralValue, true),
   y: gToPixel(-longitudinalValue, false)
 };
 
 // Get dynamics information and colors
-const dynamics = VehicleDynamics.calculateDynamics(processedData, speed);
+const dynamics = VehicleDynamics.calculateDynamics(processedData, speed, showProcessed);
 const pointColor = dynamics ? dynamics.lateralColor : "#FF6B6B";
 
 return (

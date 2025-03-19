@@ -101,18 +101,24 @@ class VehicleDynamics {
    * @param {Object} accelData - The accelerometer data
    * @returns {number} - The percentage of traction circle used (0-100)
    */
-  calculateTractionCircle(accelData) {
+  calculateTractionCircle(accelData, showProcessed = true) {
     if (!accelData) return 0;
     
-    // Get lateral and longitudinal acceleration
-    const lateral = accelData.processed_lateral || accelData.lateral || accelData.y || 0;
-    const longitudinal = accelData.processed_longitudinal || accelData.longitudinal || accelData.x || 0;
+    // Select values based on mode
+    const lateral = showProcessed
+      ? (accelData.filtered_y || accelData.processed_lateral || accelData.lateral || accelData.y || 0)
+      : (accelData.lateral || accelData.x || 0);
+      
+    const longitudinal = showProcessed
+      ? (accelData.filtered_x || accelData.processed_longitudinal || accelData.longitudinal || accelData.x || 0)
+      : (accelData.longitudinal || accelData.y || 0);
     
-    // Calculate combined acceleration vector
+    // Rest of the function remains the same...
     const combinedG = Math.sqrt(
       Math.pow(lateral, 2) + 
       Math.pow(longitudinal, 2)
     );
+    
     
     // Calculate maximum available traction based on direction
     // This creates an elliptical traction circle based on the vehicle's capabilities
@@ -150,14 +156,24 @@ class VehicleDynamics {
    * @param {number} speed - Current speed in m/s from GPS
    * @returns {Object} - Vehicle dynamics information
    */
-  calculateDynamics(accelData, speed = null) {
+    calculateDynamics(accelData, speed = null, showProcessed = true) {
     if (!accelData) return null;
     
     const now = Date.now();
-    const lateral = accelData.processed_lateral || accelData.lateral || accelData.y || 0;
-    const longitudinal = accelData.processed_longitudinal || accelData.longitudinal || accelData.x || 0;
-    const vertical = accelData.processed_vertical || accelData.vertical || accelData.z || 0;
     
+    // Select values based on mode
+    const lateral = showProcessed
+      ? (accelData.filtered_y || accelData.processed_lateral || accelData.lateral || accelData.y || 0)
+      : (accelData.lateral || accelData.x || 0);
+      
+    const longitudinal = showProcessed
+      ? (accelData.filtered_x || accelData.processed_longitudinal || accelData.longitudinal || accelData.x || 0)
+      : (accelData.longitudinal || accelData.y || 0);
+      
+    const vertical = showProcessed
+      ? (accelData.filtered_z || accelData.processed_vertical || accelData.vertical || accelData.z || 0)
+      : (accelData.vertical || accelData.z || 0);
+      
     // Calculate time delta in seconds
     let dt = 0;
     if (this.lastUpdateTime > 0) {
