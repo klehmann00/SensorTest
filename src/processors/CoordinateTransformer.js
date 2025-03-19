@@ -134,8 +134,7 @@ class CoordinateTransformer {
         // Simply subtract the calibration vector
         transformedX = rawX - this.calibrationVector.x;
         transformedY = rawY - this.calibrationVector.y;
-        transformedZ = rawZ;  // We usually don't adjust Z
-        
+        transformedZ = rawZ - this.calibrationVector.z;
         console.log("Using calibration vector:", this.calibrationVector);
       } else {
         // No calibration, just pass through
@@ -156,8 +155,8 @@ class CoordinateTransformer {
         z: transformedZ,
         
         // For compatibility with existing code
-        longitudinal: transformedX,
-        lateral: transformedY,
+        longitudinal: transformedY,
+        lateral: transformedX,
         vertical: transformedZ,
         
         // Marker to track transformation

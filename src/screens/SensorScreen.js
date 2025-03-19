@@ -43,7 +43,9 @@ const SensorScreen = () => {
   const [calibrationDescription, setCalibrationDescription] = useState('Not calibrated');
   const [calibrationOffsetX, setCalibrationOffsetX] = useState(0);
   const [calibrationOffsetY, setCalibrationOffsetY] = useState(0);  
- 
+  const [calibrationOffsetZ, setCalibrationOffsetZ] = useState(0);
+
+
   // Add this new useEffect hook for system initialization
    useEffect(() => {
     const initializeSystem = async () => {
@@ -301,101 +303,109 @@ const SensorScreen = () => {
   };
   
   // Start calibration
-  // Start calibration
-const startCalibration = () => {
-  // Initial state setup
-  setIsCalibrating(true);
-  setCalibrationProgress(0);
-  
-  // Start the sample collection process
-  const sampleCount = 30;
-  const samples = [];
-  let progress = 0;
-  
-  // Get a reference to the current acceleration values
-  const initialX = accelData.x || 0;
-  const initialY = accelData.y || 0;
-  
-  // Set these immediately for quick feedback
-  setCalibrationOffsetX(initialX);
-  setCalibrationOffsetY(initialY);
-  setIsCalibrated(true);  // Enable calibration effect immediately
-  
-  // Sample collection interval
-  const sampleInterval = setInterval(() => {
-    if (samples.length < sampleCount) {
-      // Add current data as a sample
-      samples.push({
-        x: accelData.x,
-        y: accelData.y,
-        z: accelData.z
-      });
-      
-      // Update progress
-      progress = samples.length / sampleCount;
-      setCalibrationProgress(progress);
-      
-      // Update calibration with average as we go
-      const sumX = samples.reduce((sum, s) => sum + s.x, 0);
-      const sumY = samples.reduce((sum, s) => sum + s.y, 0);
-      
-      setCalibrationOffsetX(sumX / samples.length);
-      setCalibrationOffsetY(sumY / samples.length);
-    } else {
-      // Done collecting samples
-      clearInterval(sampleInterval);
-      
-      // Calculate final averages
-      const avgX = samples.reduce((sum, s) => sum + s.x, 0) / samples.length;
-      const avgY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
-      
-      // Set final calibration values
-      setCalibrationOffsetX(avgX);
-      setCalibrationOffsetY(avgY);
-      setIsCalibrated(true);
-      setIsCalibrating(false);
-      
-      // Save calibration data for persistence
-      const calibrationData = {
-        calibrationOffsetX: avgX,
-        calibrationOffsetY: avgY
-      };
-      
-      // Optional: save to CalibrationManager for persistence
-      // CalibrationManager.saveCalibrationMatrix(calibrationData);
-      
-      Alert.alert(
-        'Calibration Complete',
-        `Calibration completed with ${samples.length} samples.\n\n` +
-        `Device orientation will now be considered "zero".`
-      );
-    }
-  }, 100); // Sample every 100ms
-  
-  // Safety timeout
-  setTimeout(() => {
-    if (isCalibrating) {
-      clearInterval(sampleInterval);
-      
-      // Use whatever samples we got
-      if (samples.length > 0) {
+  const startCalibration = () => {
+    // Initial state setup
+    setIsCalibrating(true);
+    setCalibrationProgress(0);
+    
+    // Start the sample collection process
+    const sampleCount = 30;
+    const samples = [];
+    let progress = 0;
+    
+    // Get a reference to the current acceleration values
+    const initialX = accelData.x || 0;
+    const initialY = accelData.y || 0;
+    const initialZ = accelData.z || 0;
+    
+    // Set these immediately for quick feedback
+    setCalibrationOffsetX(initialX);
+    setCalibrationOffsetY(initialY);
+    setCalibrationOffsetZ(initialZ); 
+    setIsCalibrated(true);  // Enable calibration effect immediately
+    
+    // Sample collection interval
+    const sampleInterval = setInterval(() => {
+      if (samples.length < sampleCount) {
+        // Add current data as a sample
+        samples.push({
+          x: accelData.x,
+          y: accelData.y,
+          z: accelData.z
+        });
+        
+        // Update progress
+        progress = samples.length / sampleCount;
+        setCalibrationProgress(progress);
+        
+        // Update calibration with average as we go
+        const sumX = samples.reduce((sum, s) => sum + s.x, 0);
+        const sumY = samples.reduce((sum, s) => sum + s.y, 0);
+        const sumZ = samples.reduce((sum, s) => sum + s.z, 0); 
+        
+        setCalibrationOffsetX(sumX / samples.length);
+        setCalibrationOffsetY(sumY / samples.length);
+        setCalibrationOffsetZ(sumZ / samples.length); 
+      } else {
+        // Done collecting samples
+        clearInterval(sampleInterval);
+        
+        // Calculate final averages
         const avgX = samples.reduce((sum, s) => sum + s.x, 0) / samples.length;
         const avgY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
+        const avgZ = samples.reduce((sum, s) => sum + s.z, 0) / samples.length;  // Add this line
         
+        // Set final calibration values
         setCalibrationOffsetX(avgX);
         setCalibrationOffsetY(avgY);
+        setCalibrationOffsetZ(avgZ); 
         setIsCalibrated(true);
+        setIsCalibrating(false);
+        
+        // Save calibration data for persistence
+        const calibrationData = {
+          calibrationOffsetX: avgX,
+          calibrationOffsetY: avgY,
+          calibrationOffsetZ: avgZ 
+        };
+        
+        // Optional: save to CalibrationManager for persistence
+        // CalibrationManager.saveCalibrationMatrix(calibrationData);
+        
+        Alert.alert(
+          'Calibration Complete',
+          `Calibration completed with ${samples.length} samples.\n\n` +
+          `Device orientation will now be considered "zero".`
+        );
       }
-      
-      setIsCalibrating(false);
-      
-      Alert.alert(
-        'Calibration Complete',
-        `Calibration completed with ${samples.length} samples.`
-      );
-    }
-  }, 5000); // 5 second timeout
-};
+    }, 100); // Sample every 100ms
+    
+    // Your safety timeout code remains the same, just add the Z offset to it as well
+    setTimeout(() => {
+      if (isCalibrating) {
+        clearInterval(sampleInterval);
+        
+        // Use whatever samples we got
+        if (samples.length > 0) {
+          const avgX = samples.reduce((sum, s) => sum + s.x, 0) / samples.length;
+          const avgY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
+          const avgZ = samples.reduce((sum, s) => sum + s.z, 0) / samples.length;  // Add this line
+          
+          setCalibrationOffsetX(avgX);
+          setCalibrationOffsetY(avgY);
+          setCalibrationOffsetZ(avgZ); 
+          setIsCalibrated(true);
+        }
+        
+        setIsCalibrating(false);
+        
+        Alert.alert(
+          'Calibration Complete',
+          `Calibration completed with ${samples.length} samples.`
+        );
+      }
+    }, 5000); // 5 second timeout
+  };
   
   // Toggle recording
   const toggleRecording = async () => {
@@ -486,9 +496,9 @@ const startCalibration = () => {
         <GGPlot 
   processedData={{
     // Apply calibration directly using the offset values
-    processed_lateral: isCalibrated ? (accelData.y - calibrationOffsetY) : accelData.y || 0,
-    processed_longitudinal: isCalibrated ? (accelData.x - calibrationOffsetX) : accelData.x || 0,
-    processed_vertical: accelData.z || -1,
+    processed_lateral: isCalibrated ? (accelData.x - calibrationOffsetX) : accelData.x || 0,
+    processed_longitudinal: isCalibrated ? (accelData.y - calibrationOffsetY) : accelData.y || 0,
+    processed_vertical: isCalibrated ? (accelData.z - calibrationOffsetZ) : accelData.z || 0,
     
     // Still pass the raw values for reference
     raw_x: accelData.x || 0,
