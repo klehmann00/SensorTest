@@ -22,6 +22,7 @@ import CalibrationProcessor from '../processors/CalibrationProcessor';
 import SensorProcessor from '../processors/SensorProcessor';
 import ConfigurationManager from '../managers/ConfigurationManager';
 import GravityCompensation from '../utils/GravityCompensation';
+import CoordinateTransformer from '../processors/CoordinateTransformer';
 
 const SensorScreen = () => {
   const { isAdmin } = useAdmin();
@@ -35,7 +36,7 @@ const SensorScreen = () => {
   const [dataPointCount, setDataPointCount] = useState(0);
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibrationProgress, setCalibrationProgress] = useState(0);
-  const [showProcessed, setShowProcessed] = useState(true);
+  const [showProcessed, setShowProcessed] = useState(false);
   const recordingRef = useRef(false);
   const sessionIdRef = useRef(null);
   const dataPointCountRef = useRef(0);
@@ -144,12 +145,10 @@ const SensorScreen = () => {
     try {
 
       if (isCalibratingRef.current) {
-        console.log("CALIBRATION: Handler received data during calibration");
 
         // Add a try/catch to see if there's an error
       try {
         CalibrationProcessor.addCalibrationSample(rawData);
-        console.log("Sample added successfully");
       } catch (error) {
         console.error("Error adding calibration sample:", error);
       }
@@ -306,6 +305,7 @@ const SensorScreen = () => {
   };
   
   // Start calibration
+  // START CALIBRATION FUNCTION
   const startCalibration = () => {
     // Initial state setup
     setIsCalibrating(true);
@@ -315,15 +315,62 @@ const SensorScreen = () => {
     const sampleCount = 30;
     const samples = [];
     let progress = 0;
+    let calibrationCompleted = false; // Add this flag to track completion
+    
+    // Function to process the calibration samples
+    const processCalibrationSamples = () => {
+      if (calibrationCompleted) return; // Avoid duplicate processing
+      calibrationCompleted = true;
+      
+      if (samples.length === 0) {
+        setIsCalibrating(false);
+        Alert.alert('Calibration Failed', 'No samples were collected.');
+        return;
+      }
+      
+      // Calculate averages
+      const avgX = samples.reduce((sum, s) => sum + s.x, 0) / samples.length;
+      const avgY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
+      const avgZ = samples.reduce((sum, s) => sum + s.z, 0) / samples.length;
+      
+      // Calculate magnitude
+      const magnitude = Math.sqrt(avgX * avgX + avgY * avgY + avgZ * avgZ);
+      console.log("Calibration magnitude:", magnitude);
+      
+      // Store calibration values
+      setGravityVector({x: avgX, y: avgY, z: avgZ});
+      setGravityMagnitude(magnitude);
+      setCalibrationOffsetX(avgX);
+      setCalibrationOffsetY(avgY);
+      setCalibrationOffsetZ(avgZ);
+      
+      // Log the offsets for debugging
+      console.log("Final calibration offsets:", {
+        X: avgX,
+        Y: avgY,
+        Z: avgZ
+      });
+      
+      // Update calibration state
+      setIsCalibrated(true);
+      setIsCalibrating(false);
+      
+      Alert.alert(
+        'Calibration Complete',
+        `Calibration completed with ${samples.length} samples.\n\n` +
+        `Gravity magnitude: ${magnitude.toFixed(3)}G\n` +
+        `Vector: X=${avgX.toFixed(3)}, Y=${avgY.toFixed(3)}, Z=${avgZ.toFixed(3)}`
+      );
+    };
     
     // Sample collection interval
     const sampleInterval = setInterval(() => {
       if (samples.length < sampleCount) {
-        // Add current data as a sample
+        // Add current RAW data as a sample (not filtered)
         samples.push({
-          x: accelData.x,
-          y: accelData.y,
-          z: accelData.z
+          x: accelData.raw_x || accelData.x,
+          y: accelData.raw_y || accelData.y,
+          z: accelData.raw_z || accelData.z
         });
         
         // Update progress
@@ -333,100 +380,42 @@ const SensorScreen = () => {
       } else {
         // Done collecting samples
         clearInterval(sampleInterval);
-        
-        // Calculate averages - this is the measured gravity vector
-        const avgX = samples.reduce((sum, s) => sum + s.x, 0) / samples.length;
-        const avgY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
-        const avgZ = samples.reduce((sum, s) => sum + s.z, 0) / samples.length;
-        
-        // Calculate magnitude of gravity
-        const magnitude = Math.sqrt(avgX * avgX + avgY * avgY + avgZ * avgZ);
-        console.log("Calibration magnitude:", magnitude);
-        
-        // Normalize the gravity vector (make it unit length)
-        const normX = avgX / magnitude;
-        const normY = avgY / magnitude;
-        const normZ = avgZ / magnitude;
-        
-        // Store these values in state for use in this component
-        setGravityVector({x: normX, y: normY, z: normZ});
-        setGravityMagnitude(magnitude);
-        
-        // For backward compatibility, still set the calibration offsets
-        // But we won't actually use these for compensation
-        setCalibrationOffsetX(avgX);
-        setCalibrationOffsetY(avgY);
-        setCalibrationOffsetZ(avgZ);
-        
-        setIsCalibrated(true);
-        setIsCalibrating(false);
-        
-        Alert.alert(
-          'Calibration Complete',
-          `Calibration completed with ${samples.length} samples.\n\n` +
-          `Gravity magnitude: ${magnitude.toFixed(3)}G`
-        );
+        processCalibrationSamples();
       }
     }, 100);
     
     // Safety timeout
     setTimeout(() => {
-      if (isCalibrating) {
-        clearInterval(sampleInterval);
-        
-        if (samples.length > 0) {
-          // Calculate averages
-          const avgX = samples.reduce((sum, s) => sum + s.x, 0) / samples.length;
-          const avgY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
-          const avgZ = samples.reduce((sum, s) => sum + s.z, 0) / samples.length;
-          
-          // Calculate magnitude
-          const magnitude = Math.sqrt(avgX * avgX + avgY * avgY + avgZ * avgZ);
-          
-          // Normalize the gravity vector
-          const normX = avgX / magnitude;
-          const normY = avgY / magnitude;
-          const normZ = avgZ / magnitude;
-          
-          // Store these values
-          setGravityVector({x: normX, y: normY, z: normZ});
-          setGravityMagnitude(magnitude);
-          
-          // For backward compatibility
-          setCalibrationOffsetX(avgX);
-          setCalibrationOffsetY(avgY);
-          setCalibrationOffsetZ(avgZ);
-          
-          setIsCalibrated(true);
-        }
-        
-        setIsCalibrating(false);
-        
-        Alert.alert(
-          'Calibration Complete',
-          `Calibration completed with ${samples.length} samples.`
-        );
+      clearInterval(sampleInterval);
+      if (!calibrationCompleted) {
+        processCalibrationSamples();
       }
     }, 5000); // 5 second timeout
   };
+
+
+// Update this function to also handle filtered values
+// In the compensateForGravity function, ensure we're handling filtered values correctly
+const compensateForGravity = (data, gravityVector, gravityMagnitude) => {
+  if (!data || !gravityVector) return data;
   
-  // Add this gravity compensation function in SensorScreen.js
-    const compensateForGravity = (data, gravityVector, gravityMagnitude) => {
-      if (!data || !gravityVector) return data;
-      
-      // Calculate the dot product (projection of current reading onto gravity direction)
-      const dotProduct = 
-        data.x * gravityVector.x + 
-        data.y * gravityVector.y + 
-        data.z * gravityVector.z;
-      
-      // Subtract the gravity component from each axis
-      return {
-        x: data.x - (dotProduct * gravityVector.x),
-        y: data.y - (dotProduct * gravityVector.y),
-        z: data.z - (dotProduct * gravityVector.z)
-      };
-    };
+  // Create a new object to avoid modifying the original
+  const compensated = { ...data };
+  
+  // For raw values
+  compensated.x = data.x - gravityVector.x;
+  compensated.y = data.y - gravityVector.y;
+  compensated.z = data.z - gravityVector.z;
+  
+  // For filtered values - apply the exact same offset
+  if (data.filtered_x !== undefined) {
+    compensated.filtered_x = data.filtered_x - gravityVector.x;
+    compensated.filtered_y = data.filtered_y - gravityVector.y; 
+    compensated.filtered_z = data.filtered_z - gravityVector.z;
+  }
+  
+  return compensated;
+};
 
   // Toggle recording
   const toggleRecording = async () => {
@@ -506,6 +495,11 @@ const SensorScreen = () => {
     }
   }, [isCalibrating]);
 
+   
+  const compensatedData = isCalibrated && gravityVector ? 
+  compensateForGravity(accelData, gravityVector, gravityMagnitude) 
+  : accelData;
+
   return (
     <ScrollView style={styles.scrollView}>
       <View style={styles.container}>
@@ -515,37 +509,39 @@ const SensorScreen = () => {
         )}
         
 
-        <GGPlot 
-          processedData={{
-            ...accelData,
-            
-            // Apply calibration consistently to ALL axes
-            lateral: isCalibrated ? 
-              (accelData.x - calibrationOffsetX) : 
-              accelData.x || 0,
-            longitudinal: isCalibrated ? 
-              (accelData.y - calibrationOffsetY) : 
-              accelData.y || 0,
-            vertical: isCalibrated ? 
-              (accelData.z - calibrationOffsetZ) : // This should work the same as X and Y
-              accelData.z || 0,
-            
-            // Also apply calibration to filtered values
-            filtered_x: isCalibrated && accelData.filtered_x ?
-              (accelData.filtered_x - calibrationOffsetX) :
-              accelData.filtered_x,
-            filtered_y: isCalibrated && accelData.filtered_y ?
-              (accelData.filtered_y - calibrationOffsetY) :
-              accelData.filtered_y,
-            filtered_z: isCalibrated && accelData.filtered_z ?
-              (accelData.filtered_z - calibrationOffsetZ) :
-              accelData.filtered_z
-          }}
-          maxG={1} 
-          isCalibrating={isCalibrating}
-          showProcessed={showProcessed}
-        />
 
+
+// Then your existing GGPlot component will use this compensatedData
+// In SensorScreen.js
+<GGPlot 
+  processedData={{
+    ...accelData,
+    
+    // Start with properly zeroed values
+    lateral: isCalibrated ? 0 : accelData.x || 0,
+    longitudinal: isCalibrated ? 0 : accelData.y || 0,
+    vertical: isCalibrated ? 0 : accelData.z || 0,
+    
+    // Add dynamic movement offsets from the calibrated readings
+    // Only apply the movement delta, not the absolute values
+    lateralMovement: accelData.x - calibrationOffsetX, 
+    longitudinalMovement: accelData.y - calibrationOffsetY,
+    verticalMovement: accelData.z - calibrationOffsetZ,
+    
+    // Processed mode
+    filtered_x: isCalibrated ? 0 : accelData.filtered_x,
+    filtered_y: isCalibrated ? 0 : accelData.filtered_y,
+    filtered_z: isCalibrated ? 0 : accelData.filtered_z,
+    
+    // Filtered movement
+    filteredLateralMovement: accelData.filtered_x ? (accelData.filtered_x - calibrationOffsetX) : 0,
+    filteredLongitudinalMovement: accelData.filtered_y ? (accelData.filtered_y - calibrationOffsetY) : 0,
+    filteredVerticalMovement: accelData.filtered_z ? (accelData.filtered_z - calibrationOffsetZ) : 0
+  }}
+  maxG={1} 
+  isCalibrating={isCalibrating}
+  showProcessed={showProcessed}
+/>
         
         {isCalibrating && (
           <View style={styles.calibrationOverlay}>

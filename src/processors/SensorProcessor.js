@@ -31,9 +31,10 @@ class SensorProcessor {
    * @param {boolean} applyTransformation - Whether to apply coordinate transformation
    * @returns {Object} - Processed accelerometer data
    */
-  processAccelerometerData(data, applyTransformation = true) { // Added function opening brace
+    processAccelerometerData(data, applyTransformation = true) { // Added function opening brace
+    
+
     try {
-      console.log("SensorProcessor using calibration:", this.useCalibration, "with data:", data);
       
       // Make sure we have valid data
       if (!data || typeof data !== 'object' || 
@@ -49,7 +50,6 @@ class SensorProcessor {
       // Step 1: Apply calibration/transformation if enabled
       if (this.useCalibration && applyTransformation) {
         processedData = CalibrationProcessor.applyCalibration(data);
-        console.log("After calibration:", processedData);
       } else {
         // Just add raw properties for consistency
         processedData = {
@@ -94,9 +94,6 @@ class SensorProcessor {
         processedData.processed_longitudinal = processedData.x;
         processedData.processed_vertical = processedData.z;
       }
-      
-      // Add a log to see final data
-      console.log("Final processed data:", processedData);
       
       return processedData;
     } catch (error) {

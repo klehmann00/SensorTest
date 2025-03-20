@@ -60,7 +60,6 @@ class CalibrationProcessor {
   // Add a sample during calibration
   addCalibrationSample(sampleData) {
     if (!this.isCalibrating) {
-      console.log("Not calibrating, sample ignored");
       return false;
     }
     
@@ -74,7 +73,6 @@ class CalibrationProcessor {
     
     // Calculate and report progress
     const progress = this.calibrationSamples.length / this.targetSampleCount;
-    console.log(`Calibration sample ${this.calibrationSamples.length}/${this.targetSampleCount} added. Progress: ${(progress * 100).toFixed(0)}%`);
     
     if (this.onCalibrationProgress) {
       this.onCalibrationProgress(progress);

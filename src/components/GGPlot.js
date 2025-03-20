@@ -94,14 +94,20 @@ export default function GGPlot({
     return padding + (scale / 2) + (g * scale / (2 * maxG));
   };
 
-  const renderAxes = () => {
-    const centerX = padding + plotWidth / 2;
-    const centerY = padding + plotHeight / 2;
+  // In GGPlot.js, change this part in the renderAxes function:
+const renderAxes = () => {
+  const centerX = padding + plotWidth / 2;
+  const centerY = padding + plotHeight / 2;
 
-    // Get processed values - use defaults if not available
-    const lateralValue = processedData?.processed_lateral || 0;
-    const longitudinalValue = processedData?.processed_longitudinal || 0;
-    const verticalValue = processedData?.processed_vertical || 0;
+  // Get processed values - use defaults if not available
+  const lateralValue = processedData?.processed_lateral || 0;
+  const longitudinalValue = processedData?.processed_longitudinal || 0;
+  const verticalValue = processedData?.verticalDisplay || 
+                       (showProcessed 
+                        ? (processedData?.filtered_z || 0)
+                        : (processedData?.vertical || 0));
+  
+  
 
     // Convert to bar height
     const maxVerticalG = 1; // Maximum vertical G to display
@@ -384,17 +390,29 @@ export default function GGPlot({
 
 // Get processed values
 // Get values based on showProcessed prop
+// Replace the current value selection with:
 const lateralValue = showProcessed 
-  ? (processedData?.filtered_y || 0)  // Filtered value in Processed mode
-  : (processedData?.lateral || 0);    // Calibrated but unfiltered in Raw mode
+  ? (processedData?.filteredLateralMovement || 0)
+  : (processedData?.lateralMovement || 0);
 
 const longitudinalValue = showProcessed 
-  ? (processedData?.filtered_x || 0)  // Filtered value in Processed mode
-  : (processedData?.longitudinal || 0);  // Calibrated but unfiltered in Raw mode
+  ? (processedData?.filteredLongitudinalMovement || 0)
+  : (processedData?.longitudinalMovement || 0);
 
 const verticalValue = showProcessed
-  ? (processedData?.filtered_z || 0)  // Filtered value in Processed mode
-  : (processedData?.vertical || 0);   // Calibrated but unfiltered in Raw mode
+  ? (processedData?.filteredVerticalMovement || 0)
+  : (processedData?.verticalMovement || 0);
+
+  console.log("GGPlot coordinates:", {
+    lateralValue, 
+    longitudinalValue,
+    rawCoords: {
+      lateral: processedData?.lateral,
+      longitudinal: processedData?.longitudinal,
+      filtered_x: processedData?.filtered_x,
+      filtered_y: processedData?.filtered_y
+    }
+  });
 
   // Calculate point coordinates
 const currentPoint = {

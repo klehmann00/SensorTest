@@ -110,75 +110,82 @@ class CoordinateTransformer {
    * @param {Object} data - The raw sensor data {x, y, z}
    * @returns {Object} Transformed sensor data
    */
+  // In CoordinateTransformer.js, update applyTransformation method
   applyTransformation(data) {
-    console.log("Applying transformation to:", data);
+  
+  if (!data || typeof data !== 'object') return data;
+  
+  try {
+    // Store the original values
+    const rawX = data.x;
+    const rawY = data.y;
+    const rawZ = data.z;
     
-    if (!data || typeof data !== 'object' || 
-        typeof data.x !== 'number' || 
-        typeof data.y !== 'number' || 
-        typeof data.z !== 'number') {
-      console.error('Invalid sensor data for transformation');
-      return data; // Return original data on error
-    }
+    // Get filtered values if they exist
+    const hasFiltered = 
+      data.filtered_x !== undefined && 
+      data.filtered_y !== undefined && 
+      data.filtered_z !== undefined;
     
-    try {
-      // Store the original values
-      const rawX = data.x;
-      const rawY = data.y;
-      const rawZ = data.z;
+    // Only do subtraction if we're calibrated and have a calibration vector
+    let transformedX, transformedY, transformedZ;
+    let filteredX, filteredY, filteredZ;
+    
+    if (this.calibrated && this.calibrationVector) {
+      // Simply subtract the calibration vector
+      transformedX = rawX - this.calibrationVector.x;
+      transformedY = rawY - this.calibrationVector.y;
+      transformedZ = rawZ - this.calibrationVector.z;
       
-      // Only do subtraction if we're calibrated and have a calibration vector
-      let transformedX, transformedY, transformedZ;
-      
-      if (this.calibrated && this.calibrationVector) {
-        // Simply subtract the calibration vector
-        transformedX = rawX - this.calibrationVector.x;
-        transformedY = rawY - this.calibrationVector.y;
-        transformedZ = rawZ - this.calibrationVector.z;
-        console.log("Using calibration vector:", this.calibrationVector);
-      } else {
-        // No calibration, just pass through
-        transformedX = rawX;
-        transformedY = rawY;
-        transformedZ = rawZ;
+      // Apply same calibration to filtered values if they exist
+      if (hasFiltered) {
+        filteredX = data.filtered_x - this.calibrationVector.x;
+        filteredY = data.filtered_y - this.calibrationVector.y;
+        filteredZ = data.filtered_z - this.calibrationVector.z;
       }
+    } else {
+      // No calibration, just pass through
+      transformedX = rawX;
+      transformedY = rawY;
+      transformedZ = rawZ;
       
-      // Return both raw and transformed values with a marker
-      const result = {
-        raw_x: rawX,
-        raw_y: rawY,
-        raw_z: rawZ,
-        
-        // Transformed values
-        x: transformedX,
-        y: transformedY,
-        z: transformedZ,
-        
-        // For compatibility with existing code
-        longitudinal: transformedY,
-        lateral: transformedX,
-        vertical: transformedZ,
-        
-        // Marker to track transformation
-        marker: 'transformed-by-coordinate-transformer'
-      };
-      
-      console.log("Transformation result:", result);
-      return result;
-    } catch (error) {
-      console.error('Error applying transformation:', error);
-      
-      // Return original data with raw_ properties as a fallback
-      return {
-        raw_x: data.x,
-        raw_y: data.y,
-        raw_z: data.z,
-        x: data.x,
-        y: data.y,
-        z: data.z
-      };
+      if (hasFiltered) {
+        filteredX = data.filtered_x;
+        filteredY = data.filtered_y;
+        filteredZ = data.filtered_z;
+      }
     }
+    
+    // Return both raw and transformed values
+    const result = {
+      raw_x: rawX,
+      raw_y: rawY,
+      raw_z: rawZ,
+      
+      // Transformed values
+      x: transformedX,
+      y: transformedY,
+      z: transformedZ,
+      
+      // For compatibility with existing code
+      longitudinal: transformedY,
+      lateral: transformedX,
+      vertical: transformedZ,
+    };
+    
+    // Add filtered values if they existed in input
+    if (hasFiltered) {
+      result.filtered_x = filteredX;
+      result.filtered_y = filteredY;
+      result.filtered_z = filteredZ;
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error applying transformation:', error);
+    return data;
   }
+}
   
   /**
    * Reset to identity transformation
