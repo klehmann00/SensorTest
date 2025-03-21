@@ -35,7 +35,6 @@ class CalibrationProcessor {
       this.onCalibrationCancelled = callbacks.onCalibrationCancelled;
     }
     
-    console.log('Calibration callbacks registered');
     return this;
   }
   
@@ -95,28 +94,32 @@ class CalibrationProcessor {
     
     console.log(`Completed calibration with ${this.calibrationSamples.length} samples`);
     
-    // Calculate statistics from calibration samples
-    const averageX = this.calibrationSamples.reduce((sum, sample) => sum + sample.x, 0) 
-                   / this.calibrationSamples.length;
-    const averageY = this.calibrationSamples.reduce((sum, sample) => sum + sample.y, 0)
-                   / this.calibrationSamples.length;
-    const averageZ = this.calibrationSamples.reduce((sum, sample) => sum + sample.z, 0)
-                   / this.calibrationSamples.length;
+    // Calculate the transformation matrix from samples
+    const transformMatrix = CoordinateTransformer.calculateTransformMatrix(this.calibrationSamples);
+    
+    // Calculate statistics from calibration samples for reporting
+    const avgX = this.calibrationSamples.reduce((sum, sample) => sum + sample.x, 0) 
+              / this.calibrationSamples.length;
+    const avgY = this.calibrationSamples.reduce((sum, sample) => sum + sample.y, 0)
+              / this.calibrationSamples.length;
+    const avgZ = this.calibrationSamples.reduce((sum, sample) => sum + sample.z, 0)
+              / this.calibrationSamples.length;
     
     // Calculate the vector magnitude (should be close to 1G)
-    const magnitude = Math.sqrt(averageX * averageX + averageY * averageY + averageZ * averageZ);
+    const magnitude = Math.sqrt(avgX * avgX + avgY * avgY + avgZ * avgZ);
     
-    console.log(`Average values - X: ${averageX}, Y: ${averageY}, Z: ${averageZ}, Magnitude: ${magnitude}`);
+    console.log(`Average values - X: ${avgX}, Y: ${avgY}, Z: ${avgZ}, Magnitude: ${magnitude}`);
     
     this.isCalibrating = false;
     
     const calibrationResults = {
       sampleCount: this.calibrationSamples.length,
-      averageX,
-      averageY,
-      averageZ,
-      magnitude,
-      success: true
+      averageX: avgX,
+      averageY: avgY,
+      averageZ: avgZ,
+      magnitude: magnitude,
+      matrix: transformMatrix,
+      success: !!transformMatrix
     };
     
     if (this.onCalibrationCompleted) {
@@ -146,10 +149,38 @@ class CalibrationProcessor {
   }
   
   // Apply calibration to raw sensor data
-  applyCalibration(data) {
-    // For now, just use the CoordinateTransformer's basic function
-    return CoordinateTransformer.applyTransformation(data);
+// Apply calibration to raw sensor data
+applyCalibration(data) {
+  // Make a copy of the data
+  const result = { ...data };
+  
+  // Apply calibration offsets but ensure correct coordinate mapping
+  if (this.calibrationVector) {
+    // Subtract calibration offsets
+    result.x = data.x - this.calibrationVector.x;
+    result.y = data.y - this.calibrationVector.y;
+    result.z = data.z - this.calibrationVector.z;
+    
+    // Ensure lateral = x and longitudinal = y (no swapping)
+    result.lateral = result.x;
+    result.longitudinal = result.y;
+    result.vertical = result.z;
+    
+    // Apply to filtered values if they exist
+    if (data.filtered_x !== undefined) {
+      result.filtered_x = data.filtered_x - this.calibrationVector.x;
+      result.filtered_y = data.filtered_y - this.calibrationVector.y;
+      result.filtered_z = data.filtered_z - this.calibrationVector.z;
+    }
+  } else {
+    // No calibration vector, just pass through with proper mapping
+    result.lateral = data.x;
+    result.longitudinal = data.y;
+    result.vertical = data.z;
   }
+  
+  return result;
+}
   
   // Check if calibration is active
   isCalibrationActive() {

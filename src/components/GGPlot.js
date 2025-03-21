@@ -206,8 +206,14 @@ const renderAxes = () => {
           fontSize="12"
           textAnchor="start"
         >
-          {verticalValue.toFixed(2)} G
-        </SvgText>
+{console.log("DISPLAY_Z:", {
+  rawValue: verticalValue,
+  displayWithoutOffset: verticalValue.toFixed(2),
+  currentDisplayWithOffset: (verticalValue + 1.0).toFixed(2)
+})}
+{verticalValue.toFixed(2)} G
+
+  </SvgText>
 
         {/* Vertical G axis with point */}
         <Line 
@@ -218,12 +224,14 @@ const renderAxes = () => {
           stroke="white"
           strokeWidth="1"
         />
+
         <Circle
           cx={width - padding - 20}
-          cy={centerY - (verticalValue * (height - 2 * padding) / (2 * maxVerticalG))}
+          cy={centerY - ((verticalValue + 1.0) * (height - 2 * padding) / (2 * maxVerticalG))}
           r="4"
           fill="#FF6B6B"
         />
+
         <SvgText
           x={width - padding - 20}
           y={padding - 5}
@@ -389,36 +397,25 @@ const renderAxes = () => {
   };
 
 // Get processed values
-// Get values based on showProcessed prop
-// Replace the current value selection with:
+// Only these declarations should remain
 const lateralValue = showProcessed 
-  ? (processedData?.filteredLateralMovement || 0)
-  : (processedData?.lateralMovement || 0);
+  ? (processedData?.filteredLateralMovement || processedData?.processed_lateral || 0)
+  : (processedData?.lateralMovement || processedData?.lateral || 0);
 
 const longitudinalValue = showProcessed 
-  ? (processedData?.filteredLongitudinalMovement || 0)
-  : (processedData?.longitudinalMovement || 0);
+  ? (processedData?.filteredLongitudinalMovement || processedData?.processed_longitudinal || 0)
+  : (processedData?.longitudinalMovement || processedData?.longitudinal || 0);
 
 const verticalValue = showProcessed
-  ? (processedData?.filteredVerticalMovement || 0)
-  : (processedData?.verticalMovement || 0);
-
-  console.log("GGPlot coordinates:", {
-    lateralValue, 
-    longitudinalValue,
-    rawCoords: {
-      lateral: processedData?.lateral,
-      longitudinal: processedData?.longitudinal,
-      filtered_x: processedData?.filtered_x,
-      filtered_y: processedData?.filtered_y
-    }
-  });
+  ? (processedData?.filteredVerticalMovement || processedData?.processed_vertical || 0)
+  : (processedData?.verticalMovement || processedData?.vertical || 0);
 
   // Calculate point coordinates
 const currentPoint = {
   x: gToPixel(lateralValue, true),
   y: gToPixel(-longitudinalValue, false)
 };
+
 
 // Get dynamics information and colors
 const dynamics = VehicleDynamics.calculateDynamics(processedData, speed, showProcessed);

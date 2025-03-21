@@ -23,6 +23,7 @@ import SensorProcessor from '../processors/SensorProcessor';
 import ConfigurationManager from '../managers/ConfigurationManager';
 import GravityCompensation from '../utils/GravityCompensation';
 import CoordinateTransformer from '../processors/CoordinateTransformer';
+import DebugPanel from '../components/DebugPanel';
 
 const SensorScreen = () => {
   const { isAdmin } = useAdmin();
@@ -48,6 +49,7 @@ const SensorScreen = () => {
   const [calibrationOffsetZ, setCalibrationOffsetZ] = useState(0);
   const [gravityVector, setGravityVector] = useState({ x: 0, y: 0, z: 1 });
   const [gravityMagnitude, setGravityMagnitude] = useState(1.0);
+  const [rawAccelData, setRawAccelData] = useState({x: 0, y: 0, z: 0});
 
   // Add this new useEffect hook for system initialization
    useEffect(() => {
@@ -141,38 +143,45 @@ const SensorScreen = () => {
   }, []);
 
   // Handle accelerometer data
-  const handleAccelerometerData = (rawData) => {
-    try {
+// Replace the existing handleAccelerometerData function in SensorScreen.js
 
-      if (isCalibratingRef.current) {
-
-        // Add a try/catch to see if there's an error
+const handleAccelerometerData = (rawData) => {
+  try {
+    // Check if we're calibrating
+    if (isCalibratingRef.current) {
       try {
+        // Add the sample to the calibration processor
         CalibrationProcessor.addCalibrationSample(rawData);
       } catch (error) {
-        console.error("Error adding calibration sample:", error);
-      }
-        setAccelData(rawData);
-        return;
+        console.error("Error processing calibration sample:", error);
       }
       
-      const isCurrentlyRecording = recordingRef.current;
-      const currentSessionId = sessionIdRef.current;
-
-      const processedData = SensorProcessor.processAccelerometerData(rawData);
-      
-      setAccelData(processedData);
-  
-      if (isCurrentlyRecording && currentSessionId) {
-        const userId = AuthManager.getCurrentUserId();
-        if (userId) {
-          StorageManager.storeAccelerometerData(userId, currentSessionId, processedData);
-        }
-      }
-    } catch (error) {
-      console.error("Error processing accelerometer data:", error);
+      // Update UI with raw data during calibration
+      setAccelData(rawData);
+      return;
     }
-  };
+    
+    // Check if recording is active
+    const isCurrentlyRecording = recordingRef.current;
+    const currentSessionId = sessionIdRef.current;
+
+    // Process the raw data through the sensor processor
+    const processedData = SensorProcessor.processAccelerometerData(rawData);
+    
+    // Update state with processed data
+    setAccelData(processedData);
+    
+    // If recording is active, store the data
+    if (isCurrentlyRecording && currentSessionId) {
+      const userId = AuthManager.getCurrentUserId();
+      if (userId) {
+        StorageManager.storeAccelerometerData(userId, currentSessionId, processedData);
+      }
+    }
+  } catch (error) {
+    console.error("Error processing accelerometer data:", error);
+  }
+};
 
   // Handle gyroscope data
   const handleGyroscopeData = (rawData) => {
@@ -306,91 +315,54 @@ const SensorScreen = () => {
   
   // Start calibration
   // START CALIBRATION FUNCTION
+  // Replace the existing startCalibration function in SensorScreen.js
+
   const startCalibration = () => {
-    // Initial state setup
     setIsCalibrating(true);
     setCalibrationProgress(0);
     
-    // Start the sample collection process
-    const sampleCount = 30;
     const samples = [];
-    let progress = 0;
-    let calibrationCompleted = false; // Add this flag to track completion
+    let sampleCount = 0;
     
-    // Function to process the calibration samples
-    const processCalibrationSamples = () => {
-      if (calibrationCompleted) return; // Avoid duplicate processing
-      calibrationCompleted = true;
-      
-      if (samples.length === 0) {
-        setIsCalibrating(false);
-        Alert.alert('Calibration Failed', 'No samples were collected.');
-        return;
-      }
-      
-      // Calculate averages
-      const avgX = samples.reduce((sum, s) => sum + s.x, 0) / samples.length;
-      const avgY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
-      const avgZ = samples.reduce((sum, s) => sum + s.z, 0) / samples.length;
-      
-      // Calculate magnitude
-      const magnitude = Math.sqrt(avgX * avgX + avgY * avgY + avgZ * avgZ);
-      console.log("Calibration magnitude:", magnitude);
-      
-      // Store calibration values
-      setGravityVector({x: avgX, y: avgY, z: avgZ});
-      setGravityMagnitude(magnitude);
-      setCalibrationOffsetX(avgX);
-      setCalibrationOffsetY(avgY);
-      setCalibrationOffsetZ(avgZ);
-      
-      // Log the offsets for debugging
-      console.log("Final calibration offsets:", {
-        X: avgX,
-        Y: avgY,
-        Z: avgZ
-      });
-      
-      // Update calibration state
-      setIsCalibrated(true);
-      setIsCalibrating(false);
-      
-      Alert.alert(
-        'Calibration Complete',
-        `Calibration completed with ${samples.length} samples.\n\n` +
-        `Gravity magnitude: ${magnitude.toFixed(3)}G\n` +
-        `Vector: X=${avgX.toFixed(3)}, Y=${avgY.toFixed(3)}, Z=${avgZ.toFixed(3)}`
-      );
-    };
-    
-    // Sample collection interval
-    const sampleInterval = setInterval(() => {
-      if (samples.length < sampleCount) {
-        // Add current RAW data as a sample (not filtered)
-        samples.push({
-          x: accelData.raw_x || accelData.x,
-          y: accelData.raw_y || accelData.y,
-          z: accelData.raw_z || accelData.z
-        });
-        
-        // Update progress
-        progress = samples.length / sampleCount;
-        setCalibrationProgress(progress);
-        
+    // Create a sampling interval
+    const samplingInterval = setInterval(() => {
+      if (sampleCount < 30) {
+        // Add current sample
+        samples.push({...accelData});
+        sampleCount++;
+        setCalibrationProgress(sampleCount / 30);
       } else {
-        // Done collecting samples
-        clearInterval(sampleInterval);
-        processCalibrationSamples();
+        // Complete calibration
+        clearInterval(samplingInterval);
+        
+        // Calculate average values
+        const avgX = samples.reduce((sum, s) => sum + s.x, 0) / samples.length;
+        const avgY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
+        const avgZ = samples.reduce((sum, s) => sum + s.z, 0) / samples.length;
+        
+        // Store calibration values directly
+        setCalibrationOffsetX(avgX);
+        setCalibrationOffsetY(avgY);
+        setCalibrationOffsetZ(avgZ);
+        setIsCalibrated(true);
+        setIsCalibrating(false);
+        
+        Alert.alert(
+          'Calibration Complete',
+          `Device calibrated successfully.\n` +
+          `X: ${avgX.toFixed(4)}, Y: ${avgY.toFixed(4)}, Z: ${avgZ.toFixed(4)}`
+        );
       }
     }, 100);
     
     // Safety timeout
     setTimeout(() => {
-      clearInterval(sampleInterval);
-      if (!calibrationCompleted) {
-        processCalibrationSamples();
+      if (isCalibrating) {
+        clearInterval(samplingInterval);
+        setIsCalibrating(false);
+        Alert.alert('Calibration Timeout', 'Calibration took too long. Please try again.');
       }
-    }, 5000); // 5 second timeout
+    }, 5000);
   };
 
 
@@ -513,30 +485,34 @@ const compensateForGravity = (data, gravityVector, gravityMagnitude) => {
 
 // Then your existing GGPlot component will use this compensatedData
 // In SensorScreen.js
+// This represents the GGPlot component section in SensorScreen.js
+// Replace the existing GGPlot component with this
+
 <GGPlot 
   processedData={{
     ...accelData,
     
-    // Start with properly zeroed values
-    lateral: isCalibrated ? 0 : accelData.x || 0,
-    longitudinal: isCalibrated ? 0 : accelData.y || 0,
-    vertical: isCalibrated ? 0 : accelData.z || 0,
+    // Apply calibration offsets directly
+    lateralMovement: isCalibrated ? (accelData.x - calibrationOffsetX) : accelData.x,
+    longitudinalMovement: isCalibrated ? (accelData.y - calibrationOffsetY) : accelData.y,
     
-    // Add dynamic movement offsets from the calibrated readings
-    // Only apply the movement delta, not the absolute values
-    lateralMovement: accelData.x - calibrationOffsetX, 
-    longitudinalMovement: accelData.y - calibrationOffsetY,
-    verticalMovement: accelData.z - calibrationOffsetZ,
+    // For Z, use negative value to maintain orientation
+    verticalMovement: isCalibrated ? 
+      (-accelData.z + calibrationOffsetZ) : 
+      (-accelData.z),
     
-    // Processed mode
-    filtered_x: isCalibrated ? 0 : accelData.filtered_x,
-    filtered_y: isCalibrated ? 0 : accelData.filtered_y,
-    filtered_z: isCalibrated ? 0 : accelData.filtered_z,
+    // Apply the same offsets to filtered values
+    filteredLateralMovement: isCalibrated ? 
+      ((accelData.filtered_x || accelData.x) - calibrationOffsetX) : 
+      (accelData.filtered_x || accelData.x),
     
-    // Filtered movement
-    filteredLateralMovement: accelData.filtered_x ? (accelData.filtered_x - calibrationOffsetX) : 0,
-    filteredLongitudinalMovement: accelData.filtered_y ? (accelData.filtered_y - calibrationOffsetY) : 0,
-    filteredVerticalMovement: accelData.filtered_z ? (accelData.filtered_z - calibrationOffsetZ) : 0
+    filteredLongitudinalMovement: isCalibrated ? 
+      ((accelData.filtered_y || accelData.y) - calibrationOffsetY) : 
+      (accelData.filtered_y || accelData.y),
+    
+    filteredVerticalMovement: isCalibrated ? 
+      (-(accelData.filtered_z || accelData.z) + calibrationOffsetZ) : 
+      (-(accelData.filtered_z || accelData.z))
   }}
   maxG={1} 
   isCalibrating={isCalibrating}
@@ -604,6 +580,13 @@ const compensateForGravity = (data, gravityVector, gravityMagnitude) => {
         <SensorDisplay title="Accelerometer (G)" data={accelData} color="#FF6B6B" scale={1} showProcessed={showProcessed} />
         <SensorDisplay title="Gyroscope (rad/s)" data={gyroData} color="#4ECDC4" scale={2} showProcessed={showProcessed} />
         <SensorDisplay title="Magnetometer (μT)" data={magData} color="#45B7D1" scale={0.1} showProcessed={showProcessed} />
+
+        <DebugPanel 
+          rawData={rawAccelData}
+          processedData={accelData}
+          calibrationOffsets={{x: calibrationOffsetX, y: calibrationOffsetY, z: calibrationOffsetZ}}
+          isCalibrated={isCalibrated}
+        />
       </View>
     </ScrollView>
   );

@@ -17,27 +17,19 @@ class CalibrationManager {
   /**
    * Initialize the calibration manager and load any saved calibration
    */
-  async initialize() {
-    if (this.hasLoadedSavedCalibration) return;
+async initialize() {
+  try {
+    // Clear any existing calibration data to ensure fresh start with new system
+    await this.clearCalibration();
     
-    try {
-      const savedMatrix = await this.loadCalibrationMatrix();
-      if (savedMatrix) {
-        console.log('Loading saved calibration matrix');
-        CoordinateTransformer.setTransformMatrix(savedMatrix);
-        this.calibrationMatrix = savedMatrix;
-        return true;
-      } else {
-        console.log('No saved calibration matrix found');
-        return false;
-      }
-    } catch (error) {
-      console.error('Error initializing CalibrationManager:', error);
-      return false;
-    } finally {
-      this.hasLoadedSavedCalibration = true;
-    }
+    console.log('Cleared existing calibration for system upgrade');
+    this.hasLoadedSavedCalibration = true;
+    return false; // Return false to indicate no valid calibration
+  } catch (error) {
+    console.error('Error initializing CalibrationManager:', error);
+    return false;
   }
+}
   
   /**
    * Apply calibration to raw sensor data using the coordinate transformer

@@ -31,11 +31,8 @@ class SensorProcessor {
    * @param {boolean} applyTransformation - Whether to apply coordinate transformation
    * @returns {Object} - Processed accelerometer data
    */
-    processAccelerometerData(data, applyTransformation = true) { // Added function opening brace
-    
-
+  processAccelerometerData(data, applyTransformation = true) {
     try {
-      
       // Make sure we have valid data
       if (!data || typeof data !== 'object' || 
           typeof data.x !== 'number' || 
@@ -45,53 +42,36 @@ class SensorProcessor {
         return data;
       }
       
-      let processedData = { ...data };
+      // Start with raw data
+      let processedData = { 
+        ...data,
+        // Store raw values
+        raw_x: data.x,
+        raw_y: data.y,
+        raw_z: data.z
+      };
       
       // Step 1: Apply calibration/transformation if enabled
       if (this.useCalibration && applyTransformation) {
-        processedData = CalibrationProcessor.applyCalibration(data);
-      } else {
-        // Just add raw properties for consistency
-        processedData = {
-          ...data,
-          raw_x: data.x,
-          raw_y: data.y,
-          raw_z: data.z
-        };
+        processedData = CalibrationProcessor.applyCalibration(processedData);
       }
       
-      // Step 2: Apply filtering if enabled, but preserve calibrated values
+      // Step 2: Apply filtering if enabled
       if (this.useFiltering) {
         const filteredData = DataProcessor.processAccelerometerData(processedData);
         
-        // Preserve the calibrated values and marker
-        if (processedData.marker === 'transformed-by-coordinate-transformer') {
-          filteredData.marker = processedData.marker;
-          
-          // Use filtered values for display but maintain the calibrated coordinate system
-          filteredData.processed_lateral = filteredData.filtered_y || filteredData.y;
-          filteredData.processed_longitudinal = filteredData.filtered_x || filteredData.x;
-          filteredData.processed_vertical = filteredData.filtered_z || filteredData.z;
-          
-          // Set back the original transformed values
-          filteredData.x = processedData.x;
-          filteredData.y = processedData.y;
-          filteredData.z = processedData.z;
-          filteredData.lateral = processedData.lateral;
-          filteredData.longitudinal = processedData.longitudinal;
-          filteredData.vertical = processedData.vertical;
-        } else {
-          // If not calibrated, use filtered values directly
-          filteredData.processed_lateral = filteredData.filtered_y || filteredData.y;
-          filteredData.processed_longitudinal = filteredData.filtered_x || filteredData.x;
-          filteredData.processed_vertical = filteredData.filtered_z || filteredData.z;
-        }
+        // IMPORTANT: Maintain consistent mapping between axes and directions
+        // X maps to lateral, Y maps to longitudinal, Z maps to vertical
+       // Swap X and Y to fix the coordinate mapping
+        filteredData.processed_lateral = filteredData.filtered_y || filteredData.y;
+        filteredData.processed_longitudinal = filteredData.filtered_x || filteredData.x;
+        filteredData.processed_vertical = filteredData.filtered_z || filteredData.z;
         
         processedData = filteredData;
       } else {
-        // No filtering, just add processed values
-        processedData.processed_lateral = processedData.y;
-        processedData.processed_longitudinal = processedData.x;
+        // No filtering, just add processed values from the calibrated data
+        processedData.processed_lateral = processedData.x;
+        processedData.processed_longitudinal = processedData.y;
         processedData.processed_vertical = processedData.z;
       }
       
