@@ -53,7 +53,6 @@ class SensorProcessor {
       
       // Step 1: Apply calibration/transformation if enabled
       if (this.useCalibration && applyTransformation) {
-        processedData = CalibrationProcessor.applyCalibration(processedData);
       }
       
       // Step 2: Apply filtering if enabled

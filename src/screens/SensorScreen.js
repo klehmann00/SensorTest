@@ -50,6 +50,8 @@ const SensorScreen = () => {
   const [gravityVector, setGravityVector] = useState({ x: 0, y: 0, z: 1 });
   const [gravityMagnitude, setGravityMagnitude] = useState(1.0);
   const [rawAccelData, setRawAccelData] = useState({x: 0, y: 0, z: 0});
+  const [transformedAccelData, setTransformedAccelData] = useState(null);
+
 
   // Add this new useEffect hook for system initialization
    useEffect(() => {
@@ -147,6 +149,9 @@ const SensorScreen = () => {
 
 const handleAccelerometerData = (rawData) => {
   try {
+    // Store the raw data for debugging
+    setRawAccelData(rawData);
+    
     // Check if we're calibrating
     if (isCalibratingRef.current) {
       try {
@@ -168,8 +173,17 @@ const handleAccelerometerData = (rawData) => {
     // Process the raw data through the sensor processor
     const processedData = SensorProcessor.processAccelerometerData(rawData);
     
-    // Update state with processed data
+    // Transform the processed data using CoordinateTransformer
+    const transformedData = CoordinateTransformer.applyTransformation(processedData);
+    
+    console.log("Transformed data for display:", {
+      lateral: transformedData.lateral,
+      longitudinal: transformedData.longitudinal,
+      vertical: transformedData.vertical
+    });
+    
     setAccelData(processedData);
+    setTransformedAccelData(transformedData);
     
     // If recording is active, store the data
     if (isCurrentlyRecording && currentSessionId) {
@@ -318,51 +332,21 @@ const handleAccelerometerData = (rawData) => {
   // Replace the existing startCalibration function in SensorScreen.js
 
   const startCalibration = () => {
-    setIsCalibrating(true);
-    setCalibrationProgress(0);
+    // Start the calibration process
+    if (CalibrationProcessor.isCalibrationActive()) {
+      console.log('Calibration already in progress');
+      return;
+    }
     
-    const samples = [];
-    let sampleCount = 0;
+    // Reset any previous calibration
+    CalibrationProcessor.reset();
+    CoordinateTransformer.reset();
     
-    // Create a sampling interval
-    const samplingInterval = setInterval(() => {
-      if (sampleCount < 30) {
-        // Add current sample
-        samples.push({...accelData});
-        sampleCount++;
-        setCalibrationProgress(sampleCount / 30);
-      } else {
-        // Complete calibration
-        clearInterval(samplingInterval);
-        
-        // Calculate average values
-        const avgX = samples.reduce((sum, s) => sum + s.x, 0) / samples.length;
-        const avgY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
-        const avgZ = samples.reduce((sum, s) => sum + s.z, 0) / samples.length;
-        
-        // Store calibration values directly
-        setCalibrationOffsetX(avgX);
-        setCalibrationOffsetY(avgY);
-        setCalibrationOffsetZ(avgZ);
-        setIsCalibrated(true);
-        setIsCalibrating(false);
-        
-        Alert.alert(
-          'Calibration Complete',
-          `Device calibrated successfully.\n` +
-          `X: ${avgX.toFixed(4)}, Y: ${avgY.toFixed(4)}, Z: ${avgZ.toFixed(4)}`
-        );
-      }
-    }, 100);
+    console.log('Starting calibration process...');
+    CalibrationProcessor.startCalibration();
     
-    // Safety timeout
-    setTimeout(() => {
-      if (isCalibrating) {
-        clearInterval(samplingInterval);
-        setIsCalibrating(false);
-        Alert.alert('Calibration Timeout', 'Calibration took too long. Please try again.');
-      }
-    }, 5000);
+    // All sample collection will be handled by the processor
+    // via the callback that was set up in useEffect
   };
 
 
@@ -488,35 +472,15 @@ const compensateForGravity = (data, gravityVector, gravityMagnitude) => {
 // This represents the GGPlot component section in SensorScreen.js
 // Replace the existing GGPlot component with this
 
+console.log("Data being passed to GGPlot:", 
+  showProcessed ? transformedAccelData : accelData
+);
+
 <GGPlot 
-  processedData={{
-    ...accelData,
-    
-    // Apply calibration offsets directly
-    lateralMovement: isCalibrated ? (accelData.x - calibrationOffsetX) : accelData.x,
-    longitudinalMovement: isCalibrated ? (accelData.y - calibrationOffsetY) : accelData.y,
-    
-    // For Z, use negative value to maintain orientation
-    verticalMovement: isCalibrated ? 
-      (-accelData.z + calibrationOffsetZ) : 
-      (-accelData.z),
-    
-    // Apply the same offsets to filtered values
-    filteredLateralMovement: isCalibrated ? 
-      ((accelData.filtered_x || accelData.x) - calibrationOffsetX) : 
-      (accelData.filtered_x || accelData.x),
-    
-    filteredLongitudinalMovement: isCalibrated ? 
-      ((accelData.filtered_y || accelData.y) - calibrationOffsetY) : 
-      (accelData.filtered_y || accelData.y),
-    
-    filteredVerticalMovement: isCalibrated ? 
-      (-(accelData.filtered_z || accelData.z) + calibrationOffsetZ) : 
-      (-(accelData.filtered_z || accelData.z))
-  }}
+  processedData={!showProcessed ? transformedAccelData : accelData}
   maxG={1} 
   isCalibrating={isCalibrating}
-  showProcessed={showProcessed}
+  showProcessed={!showProcessed}
 />
         
         {isCalibrating && (
@@ -582,11 +546,11 @@ const compensateForGravity = (data, gravityVector, gravityMagnitude) => {
         <SensorDisplay title="Magnetometer (μT)" data={magData} color="#45B7D1" scale={0.1} showProcessed={showProcessed} />
 
         <DebugPanel 
-          rawData={rawAccelData}
-          processedData={accelData}
-          calibrationOffsets={{x: calibrationOffsetX, y: calibrationOffsetY, z: calibrationOffsetZ}}
-          isCalibrated={isCalibrated}
-        />
+  rawData={rawAccelData}
+  processedData={transformedAccelData || accelData}
+  calibrationOffsets={CoordinateTransformer.calibrationVector || { x: 0, y: 0, z: 0 }}
+  isCalibrated={CoordinateTransformer.calibrated}
+/>
       </View>
     </ScrollView>
   );

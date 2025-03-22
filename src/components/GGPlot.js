@@ -10,8 +10,9 @@ export default function GGPlot({
   processedData, 
   isCalibrating = false,
   showProcessed = true
- 
 }) {
+  console.log("GGPlot received:", processedData);
+
   const [speed, setSpeed] = useState(0);
   const [heading, setHeading] = useState(0);
   
@@ -83,32 +84,54 @@ export default function GGPlot({
     refreshConfig();
   }, []);
 
-
-    useEffect(() => {
-      console.log(`GGPlot display mode: ${showProcessed ? 'Processed' : 'Raw'}`);
-    }, [showProcessed]);
-    
+  useEffect(() => {
+    console.log(`GGPlot display mode: ${showProcessed ? 'Processed' : 'Raw'}`);
+  }, [showProcessed]);
   
   const gToPixel = (g, isX) => {
     const scale = isX ? plotWidth : plotHeight;
     return padding + (scale / 2) + (g * scale / (2 * maxG));
   };
 
-  // In GGPlot.js, change this part in the renderAxes function:
-const renderAxes = () => {
-  const centerX = padding + plotWidth / 2;
-  const centerY = padding + plotHeight / 2;
-
-  // Get processed values - use defaults if not available
-  const lateralValue = processedData?.processed_lateral || 0;
-  const longitudinalValue = processedData?.processed_longitudinal || 0;
-  const verticalValue = processedData?.verticalDisplay || 
-                       (showProcessed 
-                        ? (processedData?.filtered_z || 0)
-                        : (processedData?.vertical || 0));
+  // UPDATED: Look for the right properties based on the shape of the processedData object
+  // Check if the data is coming in its transformed form or the original form
+  const lateralValue = showProcessed 
+    ? (processedData?.lateral || processedData?.processed_lateral || processedData?.filtered_y || 0)
+    : (processedData?.processed_lateral || processedData?.filtered_y || processedData?.y || 0);
+    
+  const longitudinalValue = showProcessed
+    ? (processedData?.longitudinal || processedData?.processed_longitudinal || processedData?.filtered_x || 0)
+    : (processedData?.processed_longitudinal || processedData?.filtered_x || processedData?.x || 0);
+    
+  const verticalValue = showProcessed
+    ? (processedData?.vertical || processedData?.processed_vertical || processedData?.filtered_z || 0)
+    : (processedData?.processed_vertical || processedData?.filtered_z || processedData?.z || 0);
   
-  
+  console.log("Main display values:", {
+    lateralValue,
+    longitudinalValue,
+    verticalValue,
+    dataShape: {
+      hasLateral: !!processedData?.lateral,
+      hasProcessedLateral: !!processedData?.processed_lateral,
+      hasFilteredY: !!processedData?.filtered_y
+    }
+  });
 
+  // Calculate point coordinates
+  const currentPoint = {
+    x: gToPixel(lateralValue, true),
+    y: gToPixel(-longitudinalValue, false)
+  };
+
+  // Updated renderAxes function that uses the main lateralValue, longitudinalValue, verticalValue
+  const renderAxes = () => {
+    const centerX = padding + plotWidth / 2;
+    const centerY = padding + plotHeight / 2;
+
+    // Use the values already calculated at component level
+    // Don't recalculate them here
+    
     // Convert to bar height
     const maxVerticalG = 1; // Maximum vertical G to display
     const barHeight = (verticalValue / maxVerticalG) * (height - 2 * padding);
@@ -206,14 +229,13 @@ const renderAxes = () => {
           fontSize="12"
           textAnchor="start"
         >
-{console.log("DISPLAY_Z:", {
-  rawValue: verticalValue,
-  displayWithoutOffset: verticalValue.toFixed(2),
-  currentDisplayWithOffset: (verticalValue + 1.0).toFixed(2)
-})}
-{verticalValue.toFixed(2)} G
-
-  </SvgText>
+          {console.log("DISPLAY_Z:", {
+            rawValue: verticalValue,
+            displayWithoutOffset: verticalValue.toFixed(2),
+            currentDisplayWithOffset: (verticalValue + 1.0).toFixed(2)
+          })}
+          {verticalValue.toFixed(2)} G
+        </SvgText>
 
         {/* Vertical G axis with point */}
         <Line 
@@ -396,84 +418,63 @@ const renderAxes = () => {
     );
   };
 
-// Get processed values
-// Only these declarations should remain
-const lateralValue = showProcessed 
-  ? (processedData?.filteredLateralMovement || processedData?.processed_lateral || 0)
-  : (processedData?.lateralMovement || processedData?.lateral || 0);
+  // Get dynamics information and colors
+  const dynamics = VehicleDynamics.calculateDynamics(processedData, speed, showProcessed);
+  const pointColor = dynamics ? dynamics.lateralColor : "#FF6B6B";
 
-const longitudinalValue = showProcessed 
-  ? (processedData?.filteredLongitudinalMovement || processedData?.processed_longitudinal || 0)
-  : (processedData?.longitudinalMovement || processedData?.longitudinal || 0);
-
-const verticalValue = showProcessed
-  ? (processedData?.filteredVerticalMovement || processedData?.processed_vertical || 0)
-  : (processedData?.verticalMovement || processedData?.vertical || 0);
-
-  // Calculate point coordinates
-const currentPoint = {
-  x: gToPixel(lateralValue, true),
-  y: gToPixel(-longitudinalValue, false)
-};
-
-
-// Get dynamics information and colors
-const dynamics = VehicleDynamics.calculateDynamics(processedData, speed, showProcessed);
-const pointColor = dynamics ? dynamics.lateralColor : "#FF6B6B";
-
-return (
-  <View style={styles.container}>
-    <Svg width={width} height={height}>
-      {/* Draw traction circle first so it's behind everything else */}
-      {renderTractionCircle()}
-      
-      {/* Draw coordinate axes */}
-      {renderAxes()}
-      
-      {/* Draw vector from center to current point */}
-      <Line
-        x1={padding + plotWidth / 2}
-        y1={padding + plotHeight / 2}
-        x2={currentPoint.x}
-        y2={currentPoint.y}
-        stroke={pointColor}
-        strokeWidth="2"
-      />
-      
-      {/* Draw current point */}
-      <Circle
-        cx={currentPoint.x}
-        cy={currentPoint.y}
-        r="5"
-        fill={pointColor}
-      />
-      
-      {/* Visual indicator during calibration */}
-      {isCalibrating && (
-        <Rect
-          x={padding}
-          y={padding}
-          width={plotWidth}
-          height={plotHeight}
-          fill="rgba(76, 209, 196, 0.3)"
-          stroke="#4ECDC4"
+  return (
+    <View style={styles.container}>
+      <Svg width={width} height={height}>
+        {/* Draw traction circle first so it's behind everything else */}
+        {renderTractionCircle()}
+        
+        {/* Draw coordinate axes */}
+        {renderAxes()}
+        
+        {/* Draw vector from center to current point */}
+        <Line
+          x1={padding + plotWidth / 2}
+          y1={padding + plotHeight / 2}
+          x2={currentPoint.x}
+          y2={currentPoint.y}
+          stroke={pointColor}
           strokeWidth="2"
         />
-      )}
-    </Svg>
-  </View>
-);
+        
+        {/* Draw current point */}
+        <Circle
+          cx={currentPoint.x}
+          cy={currentPoint.y}
+          r="5"
+          fill={pointColor}
+        />
+        
+        {/* Visual indicator during calibration */}
+        {isCalibrating && (
+          <Rect
+            x={padding}
+            y={padding}
+            width={plotWidth}
+            height={plotHeight}
+            fill="rgba(76, 209, 196, 0.3)"
+            stroke="#4ECDC4"
+            strokeWidth="2"
+          />
+        )}
+      </Svg>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-container: {
-  backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  borderRadius: 15,
-  padding: 10,
-  marginVertical: 10,
-  borderWidth: 1,
-  borderColor: 'white',
-  width: '100%',
-  alignItems: 'center',
-}
+  container: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 15,
+    padding: 10,
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: 'white',
+    width: '100%',
+    alignItems: 'center',
+  }
 });

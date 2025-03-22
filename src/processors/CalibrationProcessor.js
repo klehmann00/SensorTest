@@ -149,38 +149,12 @@ class CalibrationProcessor {
   }
   
   // Apply calibration to raw sensor data
-// Apply calibration to raw sensor data
-applyCalibration(data) {
-  // Make a copy of the data
-  const result = { ...data };
-  
-  // Apply calibration offsets but ensure correct coordinate mapping
-  if (this.calibrationVector) {
-    // Subtract calibration offsets
-    result.x = data.x - this.calibrationVector.x;
-    result.y = data.y - this.calibrationVector.y;
-    result.z = data.z - this.calibrationVector.z;
+  applyCalibration(data) {
+    if (!data) return data;
     
-    // Ensure lateral = x and longitudinal = y (no swapping)
-    result.lateral = result.x;
-    result.longitudinal = result.y;
-    result.vertical = result.z;
-    
-    // Apply to filtered values if they exist
-    if (data.filtered_x !== undefined) {
-      result.filtered_x = data.filtered_x - this.calibrationVector.x;
-      result.filtered_y = data.filtered_y - this.calibrationVector.y;
-      result.filtered_z = data.filtered_z - this.calibrationVector.z;
-    }
-  } else {
-    // No calibration vector, just pass through with proper mapping
-    result.lateral = data.x;
-    result.longitudinal = data.y;
-    result.vertical = data.z;
+    // Simply delegate to the CoordinateTransformer
+    return CoordinateTransformer.applyTransformation(data);
   }
-  
-  return result;
-}
   
   // Check if calibration is active
   isCalibrationActive() {

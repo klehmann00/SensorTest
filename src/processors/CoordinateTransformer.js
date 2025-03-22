@@ -91,66 +91,43 @@ setTransformMatrix(matrix) {
       // Save the calibration vector for offset subtraction
       this.calibrationVector = { ...avgVector };
       
-      // Simple calibration - just store the offset vector
-      // (We'll use it for simple subtraction in applyTransformation)
-      this.calibrated = true;
+      // Normalization step - critical for creating a proper transformation matrix
+      const normalizedGravity = {
+        x: avgVector.x / magnitude,
+        y: avgVector.y / magnitude,
+        z: avgVector.z / magnitude
+      };
       
-      // We also need to calculate a proper rotation matrix for orthogonal transformation
+      // The new Z axis should be opposite to gravity
+      const newZ = [-normalizedGravity.x, -normalizedGravity.y, -normalizedGravity.z];
       
-      // Step 1: Normalize the gravity vector from calibration
-      const gravityVec = [
-        avgVector.x / magnitude,
-        avgVector.y / magnitude,
-        avgVector.z / magnitude
-      ];
-      
-      // Step 2: Find a vector perpendicular to gravity
-      // Choose any vector not parallel to gravity, e.g., [1,0,0]
-      let perpVec = [1, 0, 0];
-      // If gravity is close to [1,0,0], use [0,1,0] instead
-      if (Math.abs(gravityVec[0]) > 0.9) {
-        perpVec = [0, 1, 0];
+      // Find a vector perpendicular to Z axis (for X axis)
+      // We'll use a simple approach: if Z is not parallel to [0,1,0], use that, otherwise use [1,0,0]
+      let tempVector = [0, 1, 0];
+      if (Math.abs(newZ[1]) > 0.9) {
+        tempVector = [1, 0, 0];
       }
       
-      // Step 3: Calculate first orthogonal vector using cross product
-      const v1 = [
-        gravityVec[1] * perpVec[2] - gravityVec[2] * perpVec[1],
-        gravityVec[2] * perpVec[0] - gravityVec[0] * perpVec[2],
-        gravityVec[0] * perpVec[1] - gravityVec[1] * perpVec[0]
-      ];
+      // Find new X axis using cross product
+      const newX = this.crossProduct(tempVector, newZ);
+      // Normalize X axis
+      const newXnorm = this.normalizeVector(newX);
       
-      // Normalize v1
-      const v1Mag = Math.sqrt(v1[0]*v1[0] + v1[1]*v1[1] + v1[2]*v1[2]);
-      const v1Norm = [v1[0]/v1Mag, v1[1]/v1Mag, v1[2]/v1Mag];
+      // Find Y axis using cross product of Z and X
+      const newY = this.crossProduct(newZ, newXnorm);
+      // Normalize Y axis
+      const newYnorm = this.normalizeVector(newY);
       
-      // Step 4: Calculate second orthogonal vector using cross product
-      const v2 = [
-        gravityVec[1] * v1Norm[2] - gravityVec[2] * v1Norm[1],
-        gravityVec[2] * v1Norm[0] - gravityVec[0] * v1Norm[2],
-        gravityVec[0] * v1Norm[1] - gravityVec[1] * v1Norm[0]
-      ];
-      
-      // Normalize v2
-      const v2Mag = Math.sqrt(v2[0]*v2[0] + v2[1]*v2[1] + v2[2]*v2[2]);
-      const v2Norm = [v2[0]/v2Mag, v2[1]/v2Mag, v2[2]/v2Mag];
-      
-      // Step 5: Create rotation matrix
-      // z axis is aligned with gravity (negated since we want +Z to be up)
-      // x axis is aligned with v1Norm (lateral)
-      // y axis is aligned with v2Norm (longitudinal)
+      // Construct transformation matrix
+      // Each row is one of our new basis vectors
       this.transformMatrix = [
-        [v1Norm[0], v1Norm[1], v1Norm[2]],
-        [v2Norm[0], v2Norm[1], v2Norm[2]],
-        [-gravityVec[0], -gravityVec[1], -gravityVec[2]] // negate to align +Z up
+        newXnorm,
+        newYnorm,
+        newZ
       ];
       
-      console.log("TRANSFORM_MATRIX_CALCULATED", {
-        samples: samples.length,
-        avgVector: avgVector,
-        magnitude: magnitude,
-        transformMatrix: this.transformMatrix
-      });
-
+      this.calibrated = true;
+      console.log("Final transformation matrix:", this.transformMatrix);
       return this.transformMatrix;
     } catch (error) {
       console.error('Error calculating transformation matrix:', error);
@@ -168,12 +145,8 @@ setTransformMatrix(matrix) {
     if (!data || typeof data !== 'object') return data;
     
     try {
-      console.log("Calibration state:", {
-        calibrated: this.calibrated,
-        hasMatrix: !!this.transformMatrix,
-        hasVector: !!this.calibrationVector
-      });
-
+      console.log("Applying transformation, calibrated:", this.calibrated);
+  
       // Store the original values
       const rawX = data.x;
       const rawY = data.y;
@@ -190,8 +163,6 @@ setTransformMatrix(matrix) {
       
       if (this.calibrated) {
         if (this.transformMatrix) {
-          console.log("Using transformation matrix");
-
           // Apply full orthogonal transformation using matrix
           const rawVec = [rawX, rawY, rawZ];
           
@@ -211,12 +182,11 @@ setTransformMatrix(matrix) {
             this.transformMatrix[2][1] * rawVec[1] + 
             this.transformMatrix[2][2] * rawVec[2];
           
-            console.log("TRANSFORM_APPLIED", {
-              rawInput: { x: rawX, y: rawY, z: rawZ },
-              transformMatrix: this.transformMatrix,
-              transformed: { x: transformedX, y: transformedY, z: transformedZ }
-            });
-
+          console.log("Matrix transform results:", {
+            raw: [rawX, rawY, rawZ],
+            transformed: [transformedX, transformedY, transformedZ]
+          });
+          
           // Also apply matrix to filtered values if available
           if (hasFiltered) {
             const filteredVec = [data.filtered_x, data.filtered_y, data.filtered_z];
@@ -237,23 +207,24 @@ setTransformMatrix(matrix) {
               this.transformMatrix[2][2] * filteredVec[2];
           }
         } else if (this.calibrationVector) {
-          console.log("Using transformation matrix");
-
-          // Fall back to simple offset subtraction
+          // Simple offset subtraction as fallback
           transformedX = rawX - this.calibrationVector.x;
           transformedY = rawY - this.calibrationVector.y;
           transformedZ = rawZ - this.calibrationVector.z;
           
-          console.log("OFFSET_APPLIED", {
-            rawInput: { x: rawX, y: rawY, z: rawZ },
-            calibrationVector: this.calibrationVector,
-            transformed: { x: transformedX, y: transformedY, z: transformedZ }
+          // After offset, z should be close to 1.0 (gravity)
+          transformedZ = transformedZ + 1.0;
+          
+          console.log("Offset transform results:", {
+            raw: [rawX, rawY, rawZ],
+            offsets: [this.calibrationVector.x, this.calibrationVector.y, this.calibrationVector.z],
+            transformed: [transformedX, transformedY, transformedZ]
           });
           
           if (hasFiltered) {
             filteredX = data.filtered_x - this.calibrationVector.x;
             filteredY = data.filtered_y - this.calibrationVector.y;
-            filteredZ = data.filtered_z - this.calibrationVector.z;
+            filteredZ = data.filtered_z - this.calibrationVector.z + 1.0;
           }
         }
       } else {
@@ -269,7 +240,7 @@ setTransformMatrix(matrix) {
         }
       }
       
-      // Return both raw and transformed values
+      // Return data with all processing stages
       const result = {
         raw_x: rawX,
         raw_y: rawY,
@@ -292,9 +263,7 @@ setTransformMatrix(matrix) {
         result.filtered_y = filteredY;
         result.filtered_z = filteredZ;
       }
-      console.log("Before transformation:", { x: rawX, y: rawY, z: rawZ });
-      console.log("After transformation:", { x: transformedX, y: transformedY, z: transformedZ });
-
+      
       return result;
     } catch (error) {
       console.error('Error applying transformation:', error);
@@ -314,6 +283,20 @@ setTransformMatrix(matrix) {
     this.calibrationVector = null;
     this.calibrated = false;
     console.log('CoordinateTransformer reset to identity matrix');
+  }
+  
+  // ADD THE NEW METHODS HERE
+  normalizeVector(vec) {
+    const magnitude = Math.sqrt(vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2]);
+    return [vec[0]/magnitude, vec[1]/magnitude, vec[2]/magnitude];
+  }
+
+  crossProduct(a, b) {
+    return [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0]
+    ];
   }
 }
 
