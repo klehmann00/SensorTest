@@ -1,3 +1,4 @@
+// src/screens/SensorScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet,
@@ -6,404 +7,154 @@ import {
   ScrollView,
   Button,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  TouchableOpacity,
+  Dimensions,
+  AppState
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useAdmin } from '../contexts/AdminContext';
-import SensorDataManager from '../managers/SensorData';
-import DataProcessor from '../managers/DataProcessing';
-import StorageManager from '../managers/StorageManager';
+
+// Import managers and processors
+import SensorDataManager from '../managers/SensorDataManager';
+import SensorProcessor from '../processors/SensorProcessor 2nd copy';
+import CalibrationSystem from '../managers/CalibrationSystem';
+import EnergyManager from '../managers/EnergyManager';
+import CloudStorage from '../managers/CloudStorage';
 import AuthManager from '../services/AuthManager';
-import CalibrationManager from '../managers/CalibrationManager';
+
+// Import components
 import SensorDisplay from '../components/SensorDisplay';
-import { Accelerometer } from 'expo-sensors';
 import GGPlot from '../components/GGPlot';
-import CalibrationProcessor from '../processors/CalibrationProcessor';
-import SensorProcessor from '../processors/SensorProcessor';
-import ConfigurationManager from '../managers/ConfigurationManager';
-import GravityCompensation from '../utils/GravityCompensation';
-import CoordinateTransformer from '../processors/CoordinateTransformer';
 import DebugPanel from '../components/DebugPanel';
 
 const SensorScreen = () => {
   const { isAdmin } = useAdmin();
   
-  // State variables
+  // State variables for sensor data
   const [accelData, setAccelData] = useState({ x: 0, y: 0, z: 0 });
   const [gyroData, setGyroData] = useState({ x: 0, y: 0, z: 0 });
   const [magData, setMagData] = useState({ x: 0, y: 0, z: 0 });
+  const [processedAccelData, setProcessedAccelData] = useState(null);
+  
+  // Recording state
   const [isRecording, setIsRecording] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const [dataPointCount, setDataPointCount] = useState(0);
+  
+  // Calibration state
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibrationProgress, setCalibrationProgress] = useState(0);
+  const [isCalibrated, setIsCalibrated] = useState(false);
+  const [calibrationDescription, setCalibrationDescription] = useState('Not calibrated');
+  
+  // Display options
   const [showProcessed, setShowProcessed] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [powerMode, setPowerMode] = useState('normal');
+  
+  // References for async state access
   const recordingRef = useRef(false);
   const sessionIdRef = useRef(null);
   const dataPointCountRef = useRef(0);
-  const isCalibratingRef = useRef(false);
-  const [isCalibrated, setIsCalibrated] = useState(false);
-  const [calibrationDescription, setCalibrationDescription] = useState('Not calibrated');
-  const [calibrationOffsetX, setCalibrationOffsetX] = useState(0);
-  const [calibrationOffsetY, setCalibrationOffsetY] = useState(0);  
-  const [calibrationOffsetZ, setCalibrationOffsetZ] = useState(0);
-  const [gravityVector, setGravityVector] = useState({ x: 0, y: 0, z: 1 });
-  const [gravityMagnitude, setGravityMagnitude] = useState(1.0);
-  const [rawAccelData, setRawAccelData] = useState({x: 0, y: 0, z: 0});
-  const [transformedAccelData, setTransformedAccelData] = useState(null);
-
-
-  // Add this new useEffect hook for system initialization
-   useEffect(() => {
-    const initializeSystem = async () => {
+  const calibratingRef = useRef(false);
+  const appStateRef = useRef(AppState.currentState);
+  
+  // Initialize systems on mount
+  useEffect(() => {
+    async function initializeSystems() {
       try {
-        // Initialize the configuration
-        await ConfigurationManager.loadConfiguration();
+        console.log('Initializing systems...');
         
-        // Initialize the calibration system and load saved calibration
-        const calibrationLoaded = await CalibrationManager.initialize();
+        // Initialize energy manager
+        EnergyManager.initialize();
+        
+        // Subscribe to energy manager events
+        EnergyManager.subscribe(handlePowerModeChange);
+        
+        // Initialize calibration system and load saved calibration
+        const calibrationLoaded = await CalibrationSystem.initialize();
         setIsCalibrated(calibrationLoaded);
+        updateCalibrationInfo();
         
-        if (calibrationLoaded) {
-          console.log('Loaded saved calibration');
-          const summary = CalibrationManager.getCalibrationSummary();
-          setCalibrationDescription(summary.rotationDescription);
-        } else {
-          console.log('No calibration loaded');
-        }
+        // Initialize sensor processor with default config
+        SensorProcessor.initialize({
+          processing: {
+            maxDelta: { x: 0.025, y: 0.025, z: 0.05 },
+            filter: { x: 0.1, y: 0.1, z: 0.2 }
+          },
+          useFiltering: true,
+          useCalibration: true,
+          debugMode: false
+        });
         
-        // Initialize the SensorProcessor
-        SensorProcessor.initialize();
+        // Subscribe to AppState changes
+        const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+        
+        return () => {
+          // Clean up
+          EnergyManager.cleanup();
+          appStateSubscription.remove();
+        };
       } catch (error) {
         console.error('Error initializing systems:', error);
+        Alert.alert('Initialization Error', 'Failed to initialize sensor systems. Please restart the app.');
       }
-    };
+    }
     
-    initializeSystem();
+    initializeSystems();
   }, []);
   
- // Add this new useEffect hook along with your other hooks
-    useEffect(() => {
-      isCalibratingRef.current = isCalibrating;
-    }, [isCalibrating]);
-
-  // Check sensor availability when component loads
-  useEffect(() => {
-    SensorDataManager.checkSensorsAvailability().then(availability => {
-      console.log("Sensor availability:", availability);
-
-    });
-
-
-    // Register calibration callbacks
-    CalibrationProcessor.registerCallbacks({
-      onCalibrationStarted: () => {
-        setIsCalibrating(true);
-        setCalibrationProgress(0);
-        console.log("Calibration started");
-      },
-      onCalibrationProgress: (progress) => {
-        setCalibrationProgress(progress);
-        console.log(`Calibration progress: ${(progress * 100).toFixed(0)}%`);
-      },
-      onCalibrationCompleted: async (result) => {
-        setIsCalibrating(false);
-        console.log("Calibration completed:", result);
-        
-        // Save calibration matrix if successful
-        if (result.success) {
-          // Apply the calibration matrix to CoordinateTransformer
-          const saved = await CalibrationManager.saveCalibrationMatrix(result.matrix);
-          setIsCalibrated(saved);
-          
-          const summary = CalibrationManager.getCalibrationSummary();
-          setCalibrationDescription(summary.rotationDescription);
-          
-          // Make sure the SensorProcessor knows to use calibration
-          SensorProcessor.setCalibration(true);
-          
-          Alert.alert(
-            'Calibration Complete',
-            `Calibration completed with ${result.sampleCount} samples.\n\n` +
-            `Device orientation: ${summary.rotationDescription}`
-          );
-        } else {
-          Alert.alert(
-            'Calibration Complete',
-            `Calibration completed but couldn't determine orientation.\n` +
-            `Try again with the device positioned securely.`
-          );
-        }
-      },
-      onCalibrationCancelled: () => {
-        setIsCalibrating(false);
-        setCalibrationProgress(0);
-        console.log("Calibration cancelled");
-        Alert.alert('Calibration Cancelled', 'Calibration process was cancelled.');
-      }
-    });
-  }, []);
-
-  // Handle accelerometer data
-// Replace the existing handleAccelerometerData function in SensorScreen.js
-
-const handleAccelerometerData = (rawData) => {
-  try {
-    // Store the raw data for debugging
-    setRawAccelData(rawData);
+  // Handle app state changes
+  const handleAppStateChange = (nextAppState) => {
+    console.log(`App state changed: ${appStateRef.current} -> ${nextAppState}`);
+    appStateRef.current = nextAppState;
     
-    // Check if we're calibrating
-    if (isCalibratingRef.current) {
-      try {
-        // Add the sample to the calibration processor
-        CalibrationProcessor.addCalibrationSample(rawData);
-      } catch (error) {
-        console.error("Error processing calibration sample:", error);
-      }
-      
-      // Update UI with raw data during calibration
-      setAccelData(rawData);
-      return;
-    }
-    
-    // Check if recording is active
-    const isCurrentlyRecording = recordingRef.current;
-    const currentSessionId = sessionIdRef.current;
-
-    // Process the raw data through the sensor processor
-    const processedData = SensorProcessor.processAccelerometerData(rawData);
-    
-    // Transform the processed data using CoordinateTransformer
-    const transformedData = CoordinateTransformer.applyTransformation(processedData);
-    
-    console.log("Transformed data for display:", {
-      lateral: transformedData.lateral,
-      longitudinal: transformedData.longitudinal,
-      vertical: transformedData.vertical
-    });
-    
-    setAccelData(processedData);
-    setTransformedAccelData(transformedData);
-    
-    // If recording is active, store the data
-    if (isCurrentlyRecording && currentSessionId) {
-      const userId = AuthManager.getCurrentUserId();
-      if (userId) {
-        StorageManager.storeAccelerometerData(userId, currentSessionId, processedData);
-      }
-    }
-  } catch (error) {
-    console.error("Error processing accelerometer data:", error);
-  }
-};
-
-  // Handle gyroscope data
-  const handleGyroscopeData = (rawData) => {
-    try {
-      const isCurrentlyRecording = recordingRef.current;
-      const currentSessionId = sessionIdRef.current;
-      
-      if (isCalibrating) {
-        setGyroData(rawData);
-        return;
-      }
-      
-      const processedData = DataProcessor.processGyroscopeData(rawData);
-      setGyroData(processedData);
-      
-      if (isCurrentlyRecording && currentSessionId) {
-        const userId = AuthManager.getCurrentUserId();
-        if (userId) {
-          StorageManager.storeGyroscopeData(userId, currentSessionId, processedData);
-        }
-      }
-    } catch (error) {
-      console.error("Error processing gyroscope data:", error);
+    // If going to background while recording, make sure we're in background mode
+    if (nextAppState === 'background' && recordingRef.current) {
+      EnergyManager.setPowerMode('background');
     }
   };
-
-  // Handle magnetometer data
-  const handleMagnetometerData = (rawData) => {
-    try {
-      const isCurrentlyRecording = recordingRef.current;
-      const currentSessionId = sessionIdRef.current;
-      
-      if (isCalibrating) {
-        setMagData(rawData);
-        return;
-      }
-      
-      const processedData = DataProcessor.processMagnetometerData(rawData);
-      setMagData(processedData);
-      
-      if (isCurrentlyRecording && currentSessionId) {
-        const userId = AuthManager.getCurrentUserId();
-        if (userId) {
-          StorageManager.storeMagnetometerData(userId, currentSessionId, processedData);
-        }
-      }
-    } catch (error) {
-      console.error("Error processing magnetometer data:", error);
-    }
-  };
-
-  // Start recording
-  const startRecording = async () => {
-    const userId = AuthManager.getCurrentUserId();
-    if (!userId) {
-      Alert.alert('Error', 'You must be logged in to record data');
-      return;
-    }
+  
+  // Handle power mode changes
+  const handlePowerModeChange = (mode, config) => {
+    console.log(`Power mode changed to ${mode}`);
+    setPowerMode(mode);
     
-    const newSessionId = Date.now().toString();
-    console.log(`Starting recording with session ID: ${newSessionId}`);
-
-    const success = await StorageManager.startRecordingSession(userId, newSessionId);
+    // Update sensor manager configuration
+    SensorDataManager.updateConfiguration({
+      updateInterval: config.updateInterval,
+      batchSize: config.batchSize,
+      lowPowerMode: mode !== 'normal'
+    });
     
-    if (success) {
-      console.log(`Recording started successfully: user=${userId}, session=${newSessionId}`);
-      setSessionId(newSessionId);
-      setIsRecording(true);
-      setDataPointCount(0);
-      
-      sessionIdRef.current = newSessionId;
-      recordingRef.current = true;
-      
-      DataProcessor.reset();
-      
-      const countInterval = setInterval(async () => {
-        console.log(`Count interval fired, recording: ${recordingRef.current}, sessionId: ${sessionIdRef.current}`);
-      
-        if (!recordingRef.current) {
-          console.log("Recording stopped, clearing interval");
-          clearInterval(countInterval);
-          return;
+    // Update sensor processor based on processing level
+    if (config.processingLevel === 'full') {
+      SensorProcessor.setFiltering(true);
+    } else if (config.processingLevel === 'minimal') {
+      // Minimal processing - turn off some heavier processing
+      SensorProcessor.updateConfig({
+        processing: {
+          filter: { x: 0.3, y: 0.3, z: 0.3 } // Less filtering (higher alpha)
         }
-      
-        try {
-          console.log(`Counting data points for session ${newSessionId}`);
-          const count = await StorageManager.countSessionDataPoints(userId, newSessionId);
-          console.log(`Data point count result: ${count}`);
-          setDataPointCount(count);
-          dataPointCountRef.current = count;
-        } catch (error) {
-          console.error("Error counting data points:", error);
-        }
-      }, 1000);
-          
-      return countInterval;
+      });
+      SensorProcessor.setFiltering(true);
     } else {
-      Alert.alert('Error', 'Failed to start recording session');
-      return null;
+      // No processing in background mode
+      SensorProcessor.setFiltering(false);
     }
   };
   
-  // Stop recording
-  const stopRecording = async (countInterval) => {
-    const userId = AuthManager.getCurrentUserId();
-    if (!userId || !sessionId) {
-      return;
-    }
-    
-    setIsRecording(false);
-    recordingRef.current = false;
-    sessionIdRef.current = null;
-    
-    if (countInterval) {
-      clearInterval(countInterval);
-    }
-    
-    await StorageManager.endRecordingSession(userId, sessionId);
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    const exportData = await StorageManager.exportSessionData(userId, sessionId);
-    
-    if (!exportData.files || exportData.files.length === 0) {
-      Alert.alert('Warning', 'No data was recorded during this session');
-      return;
-    }
-    
-    await StorageManager.emailExportedData(exportData.files, sessionId);
-    setSessionId(null);
-  };
-  
-  // Start calibration
-  // START CALIBRATION FUNCTION
-  // Replace the existing startCalibration function in SensorScreen.js
-
-  const startCalibration = () => {
-    // Start the calibration process
-    if (CalibrationProcessor.isCalibrationActive()) {
-      console.log('Calibration already in progress');
-      return;
-    }
-    
-    // Reset any previous calibration
-    CalibrationProcessor.reset();
-    CoordinateTransformer.reset();
-    
-    console.log('Starting calibration process...');
-    CalibrationProcessor.startCalibration();
-    
-    // All sample collection will be handled by the processor
-    // via the callback that was set up in useEffect
-  };
-
-
-// Update this function to also handle filtered values
-// In the compensateForGravity function, ensure we're handling filtered values correctly
-const compensateForGravity = (data, gravityVector, gravityMagnitude) => {
-  if (!data || !gravityVector) return data;
-  
-  // Create a new object to avoid modifying the original
-  const compensated = { ...data };
-  
-  // For raw values
-  compensated.x = data.x - gravityVector.x;
-  compensated.y = data.y - gravityVector.y;
-  compensated.z = data.z - gravityVector.z;
-  
-  // For filtered values - apply the exact same offset
-  if (data.filtered_x !== undefined) {
-    compensated.filtered_x = data.filtered_x - gravityVector.x;
-    compensated.filtered_y = data.filtered_y - gravityVector.y; 
-    compensated.filtered_z = data.filtered_z - gravityVector.z;
-  }
-  
-  return compensated;
-};
-
-  // Toggle recording
-  const toggleRecording = async () => {
-    let countInterval = null;
-    
-    if (!isRecording) {
-      countInterval = await startRecording();
+  // Update calibration info display
+  const updateCalibrationInfo = () => {
+    if (CalibrationSystem.isDeviceCalibrated()) {
+      setCalibrationDescription(CalibrationSystem.getOrientationDescription());
     } else {
-      await stopRecording(countInterval);
+      setCalibrationDescription('Device not calibrated');
     }
   };
   
-  // Logout handler
-  const handleLogout = async () => {
-    if (isRecording) {
-      await stopRecording();
-    }
-    
-    await AuthManager.logout();
-  };
-  
-  // Open web display
-  const openWebView = async () => {
-    await WebBrowser.openBrowserAsync('https://klehmann00.github.io/sensor-display/');
-  };
-  
-  // Toggle data processing
-  const toggleDataProcessing = () => {
-    setShowProcessed(!showProcessed);
-  };
-
-  // Initialize sensors
+  // Start sensors when component is mounted
   useEffect(() => {
     try {
       const callbacks = {
@@ -420,13 +171,14 @@ const compensateForGravity = (data, gravityVector, gravityMagnitude) => {
         console.log("Cleaning up sensors...");
         SensorDataManager.stopSensors();
         
-        if (isRecording) {
+        if (recordingRef.current) {
           stopRecording();
         }
         
-        if (isCalibrating) {
-          CalibrationProcessor.cancelCalibration();
+        if (calibratingRef.current) {
+          CalibrationSystem.cancelCalibration();
           setIsCalibrating(false);
+          calibratingRef.current = false;
         }
       };
     } catch (error) {
@@ -434,55 +186,370 @@ const compensateForGravity = (data, gravityVector, gravityMagnitude) => {
       Alert.alert('Sensor Error', 'Failed to initialize device sensors. Please restart the app.');
     }
   }, []);
-
-  // Add safety timeout for calibration - NEW USEEFFECT HOOK
-  // Replace the safety timeout useEffect with this simpler version:
-  useEffect(() => {
-    if (isCalibrating) {
-      console.log("Setting up calibration safety timeout");
-      const timer = setTimeout(() => {
-        console.log("Calibration safety timeout triggered");
-        // Directly set state instead of calling the method
-        setIsCalibrating(false);
-        Alert.alert('Calibration Timeout', 'Calibration timed out after 10 seconds.');
-      }, 10000);
-      
-      return () => clearTimeout(timer);
+  
+  // Handle accelerometer data
+  // Handle accelerometer data
+const handleAccelerometerData = (rawData) => {
+  try {
+    // Handle calibration mode
+    if (calibratingRef.current) {
+      CalibrationSystem.addCalibrationSample(rawData);
+      setAccelData(rawData);
+      return;
     }
-  }, [isCalibrating]);
-
-   
-  const compensatedData = isCalibrated && gravityVector ? 
-  compensateForGravity(accelData, gravityVector, gravityMagnitude) 
-  : accelData;
+    
+    // Process raw data through our pipeline
+    const processedData = SensorProcessor.processAccelerometerData(rawData);
+    
+    // Update UI with appropriate data
+    setAccelData(rawData); // Always store original raw data
+    setProcessedAccelData(processedData); // Store all processed stages
+    
+    // Rest of the function remains the same...
+  } catch (error) {
+    console.error("Error processing accelerometer data:", error);
+  }
+};
+  
+  // Handle gyroscope data
+  const handleGyroscopeData = (rawData) => {
+    try {
+      // Store a reference to the raw data for debugging
+      const timestamp = Date.now();
+      const timestampedRawData = { ...rawData, timestamp };
+      
+      // Skip processing during calibration
+      if (calibratingRef.current) {
+        setGyroData(timestampedRawData);
+        return;
+      }
+      
+      // Process through pipeline
+      const processedData = SensorProcessor.processGyroscopeData(timestampedRawData);
+      
+      // Update UI
+      setGyroData(processedData);
+      
+      // Store data if recording
+      if (recordingRef.current && sessionIdRef.current) {
+        const userId = AuthManager.getCurrentUserId();
+        if (userId) {
+          CloudStorage.queueData(userId, sessionIdRef.current, 'gyroscope', processedData);
+        }
+      }
+    } catch (error) {
+      console.error("Error processing gyroscope data:", error);
+    }
+  };
+  
+  // Handle magnetometer data
+  const handleMagnetometerData = (rawData) => {
+    try {
+      // Skip processing during calibration or if in low power mode
+      if (calibratingRef.current || powerMode === 'background') {
+        setMagData(rawData);
+        return;
+      }
+      
+      // Update UI
+      setMagData(rawData);
+      
+      // Store data if recording
+      if (recordingRef.current && sessionIdRef.current) {
+        const userId = AuthManager.getCurrentUserId();
+        if (userId) {
+          CloudStorage.queueData(userId, sessionIdRef.current, 'magnetometer', rawData);
+        }
+      }
+    } catch (error) {
+      console.error("Error processing magnetometer data:", error);
+    }
+  };
+  
+  // Start recording data
+  const startRecording = async () => {
+    const userId = AuthManager.getCurrentUserId();
+    if (!userId) {
+      Alert.alert('Error', 'You must be logged in to record data');
+      return;
+    }
+    
+    const newSessionId = Date.now().toString();
+    console.log(`Starting recording with session ID: ${newSessionId}`);
+    
+    // Create session in database
+    const success = await CloudStorage.startRecordingSession(userId, newSessionId);
+    
+    if (success) {
+      console.log(`Recording started successfully: user=${userId}, session=${newSessionId}`);
+      setSessionId(newSessionId);
+      setIsRecording(true);
+      setDataPointCount(0);
+      
+      // Update refs for async access
+      sessionIdRef.current = newSessionId;
+      recordingRef.current = true;
+      dataPointCountRef.current = 0;
+      
+      // Reset processors
+      SensorProcessor.reset();
+      
+      return true;
+    } else {
+      Alert.alert('Error', 'Failed to start recording session');
+      return false;
+    }
+  };
+  
+  // Stop recording data
+  const stopRecording = async () => {
+    const userId = AuthManager.getCurrentUserId();
+    if (!userId || !sessionIdRef.current) {
+      return false;
+    }
+    
+    // Update UI state
+    setIsRecording(false);
+    recordingRef.current = false;
+    
+    // Store the session ID before clearing the ref
+    const currentSessionId = sessionIdRef.current;
+    sessionIdRef.current = null;
+    
+    try {
+      // Process any remaining queued data
+      await CloudStorage.processUploadQueue();
+      
+      // End the session in database
+      await CloudStorage.endRecordingSession(userId, currentSessionId);
+      
+      // Reset session state
+      setSessionId(null);
+      
+      // Offer to export data
+      Alert.alert(
+        'Recording Complete',
+        'Would you like to export the recorded data?',
+        [
+          {
+            text: 'No',
+            style: 'cancel'
+          },
+          {
+            text: 'Yes',
+            onPress: () => exportSessionData(userId, currentSessionId)
+          }
+        ]
+      );
+      
+      return true;
+    } catch (error) {
+      console.error("Error stopping recording:", error);
+      Alert.alert('Error', 'Failed to complete recording session');
+      return false;
+    }
+  };
+  
+  // Export session data
+  const exportSessionData = async (userId, sessionId) => {
+    try {
+      Alert.alert('Exporting Data', 'Preparing session data for export...');
+      
+      // Get session data
+      const sessionData = await CloudStorage.getSessionData(userId, sessionId);
+      
+      if (!sessionData) {
+        Alert.alert('Error', 'No data found for this session');
+        return;
+      }
+      
+      // Send data via email or other method
+      // Implementation depends on platform capabilities
+      
+      Alert.alert('Export Complete', 'Session data has been exported successfully');
+    } catch (error) {
+      console.error("Error exporting data:", error);
+      Alert.alert('Export Error', 'Failed to export session data');
+    }
+  };
+  
+  // Toggle recording
+  const toggleRecording = async () => {
+    if (!isRecording) {
+      await startRecording();
+    } else {
+      await stopRecording();
+    }
+  };
+  
+  // Start calibration
+  const startCalibration = () => {
+    // Make sure we're not recording
+    if (isRecording) {
+      Alert.alert('Recording Active', 'Please stop recording before calibrating');
+      return;
+    }
+    
+    // Start the calibration process
+    if (CalibrationSystem.isCalibrationActive()) {
+      console.log('Calibration already in progress');
+      return;
+    }
+    
+    // Set up calibration callbacks
+    const callbacks = {
+      onStart: () => {
+        setIsCalibrating(true);
+        calibratingRef.current = true;
+        setCalibrationProgress(0);
+        console.log('Calibration started');
+      },
+      onProgress: (progress) => {
+        setCalibrationProgress(progress);
+        console.log(`Calibration progress: ${(progress * 100).toFixed(0)}%`);
+      },
+      onComplete: (result) => {
+        setIsCalibrating(false);
+        calibratingRef.current = false;
+        
+        if (result.success) {
+          setIsCalibrated(true);
+          updateCalibrationInfo();
+          
+          Alert.alert(
+            'Calibration Complete',
+            `Device calibrated successfully.\nOrientation: ${CalibrationSystem.getOrientationDescription()}`
+          );
+        } else {
+          Alert.alert(
+            'Calibration Issue',
+            'Calibration completed but could not determine device orientation properly. Please try again with the device on a stable surface.'
+          );
+        }
+      },
+      onCancel: (reason) => {
+        setIsCalibrating(false);
+        calibratingRef.current = false;
+        setCalibrationProgress(0);
+        
+        Alert.alert('Calibration Cancelled', reason);
+      }
+    };
+    
+    // Start calibration with callbacks
+    CalibrationSystem.startCalibration(callbacks);
+  };
+  
+  // Cancel calibration
+  const cancelCalibration = () => {
+    if (calibratingRef.current) {
+      CalibrationSystem.cancelCalibration();
+    }
+  };
+  
+  // Clear calibration
+  const clearCalibration = async () => {
+    // Confirm with user
+    Alert.alert(
+      'Clear Calibration',
+      'Are you sure you want to clear the current calibration?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Clear',
+          onPress: async () => {
+            const success = await CalibrationSystem.clearCalibration();
+            if (success) {
+              setIsCalibrated(false);
+              setCalibrationDescription('Device not calibrated');
+              Alert.alert('Calibration Cleared', 'Device calibration has been reset');
+            } else {
+              Alert.alert('Error', 'Failed to clear calibration');
+            }
+          },
+          style: 'destructive'
+        }
+      ]
+    );
+  };
+  
+  // Toggle processed data display
+  const toggleDataProcessing = () => {
+    setShowProcessed(!showProcessed);
+  };
+  
+  // Toggle debug panel
+  const toggleDebugPanel = () => {
+    setShowDebugPanel(!showDebugPanel);
+  };
+  
+  // Logout handler
+  const handleLogout = async () => {
+    if (isRecording) {
+      await stopRecording();
+    }
+    
+    await AuthManager.logout();
+  };
+  
+  // Open web display
+  const openWebView = async () => {
+    await WebBrowser.openBrowserAsync('https://yourdomain.com/sensor-display');
+  };
+  
+  // Add a calibration sample manually
+  const addCalibrationSample = () => {
+    if (calibratingRef.current) {
+      console.log("Manually adding calibration sample");
+      CalibrationSystem.addCalibrationSample(accelData);
+    } else {
+      Alert.alert('Not Calibrating', 'Start calibration first.');
+    }
+  };
 
   return (
     <ScrollView style={styles.scrollView}>
       <View style={styles.container}>
-        <Text style={styles.mainTitle}>iPhone Sensors</Text>
+        <Text style={styles.mainTitle}>Sensor Display</Text>
+        
         {isRecording && (
-          <Text style={styles.dataCount}>Data points collected: {dataPointCount}</Text>
+          <View style={styles.recordingStatus}>
+            <Text style={styles.recordingText}>
+              RECORDING {dataPointCount} samples
+            </Text>
+          </View>
         )}
         
-
-
-
-// Then your existing GGPlot component will use this compensatedData
-// In SensorScreen.js
-// This represents the GGPlot component section in SensorScreen.js
-// Replace the existing GGPlot component with this
-
-console.log("Data being passed to GGPlot:", 
-  showProcessed ? transformedAccelData : accelData
-);
-
-<GGPlot 
-  processedData={!showProcessed ? transformedAccelData : accelData}
-  maxG={1} 
-  isCalibrating={isCalibrating}
-  showProcessed={!showProcessed}
-/>
+        {isCalibrated ? (
+          <Text style={styles.calibrationStatus}>
+            Calibrated: {calibrationDescription}
+          </Text>
+        ) : (
+          <Text style={styles.calibrationStatus}>
+            Not calibrated
+          </Text>
+        )}
         
+        {/* Power mode indicator */}
+        <Text style={styles.powerMode}>
+          Power Mode: {powerMode.toUpperCase()}
+        </Text>
+        
+        {/* Main visualization */}
+        // Find the GGPlot component in SensorScreen.js and replace it with this:
+
+         <GGPlot 
+            processedData={showProcessed ? processedAccelData : accelData}
+            maxG={1} 
+            isCalibrating={isCalibrating}
+            showProcessed={showProcessed}
+          />
+
+        
+        {/* Calibration overlay */}
         {isCalibrating && (
           <View style={styles.calibrationOverlay}>
             <Text style={styles.calibrationText}>Calibrating...</Text>
@@ -490,67 +557,118 @@ console.log("Data being passed to GGPlot:",
               {Math.round(calibrationProgress * 100)}% Complete
             </Text>
             <ActivityIndicator size="large" color="#4ECDC4" />
+            <TouchableOpacity 
+              style={styles.cancelButton}
+              onPress={cancelCalibration}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         )}
         
+        {/* Control buttons */}
         <View style={styles.buttonContainer}>
-          <Button 
-            title={isRecording ? "Stop Recording" : "Start Recording"}
+          <TouchableOpacity 
+            style={[
+              styles.actionButton,
+              isRecording ? styles.stopButton : styles.startButton,
+              isCalibrating && styles.disabledButton
+            ]}
             onPress={toggleRecording}
-            color={isRecording ? "#E74C3C" : "#2ECC71"}
             disabled={isCalibrating}
-          />
-          <Button 
-            title="Calibrate"
+          >
+            <Text style={styles.buttonText}>
+              {isRecording ? "Stop Recording" : "Start Recording"}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[
+              styles.actionButton,
+              styles.calibrateButton,
+              (isCalibrating || isRecording) && styles.disabledButton
+            ]}
             onPress={startCalibration}
-            color="#3498DB"
             disabled={isCalibrating || isRecording}
-          />
-          <Button 
-            title={showProcessed ? "Show Raw" : "Show Processed"} 
-            onPress={toggleDataProcessing} 
-            color="#9B59B6"
-            disabled={isCalibrating}
-          />
-          <Button 
-            title="Open Web Display" 
-            onPress={openWebView}
-            color="#4ECDC4"
-            disabled={isCalibrating}
-          />
-          <Button
-            title="Logout"
+          >
+            <Text style={styles.buttonText}>Calibrate</Text>
+          </TouchableOpacity>
+          
+          {isCalibrated && (
+            <TouchableOpacity 
+              style={[
+                styles.actionButton,
+                styles.clearButton,
+                (isCalibrating || isRecording) && styles.disabledButton
+              ]}
+              onPress={clearCalibration}
+              disabled={isCalibrating || isRecording}
+            >
+              <Text style={styles.buttonText}>Clear Calibration</Text>
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.toggleButton]}
+            onPress={toggleDataProcessing}
+          >
+            <Text style={styles.buttonText}>
+              {showProcessed ? "Show Raw" : "Show Processed"}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.toggleButton]}
+            onPress={toggleDebugPanel}
+          >
+            <Text style={styles.buttonText}>
+              {showDebugPanel ? "Hide Debug" : "Show Debug"}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.logoutButton]}
             onPress={handleLogout}
-            color="#E74C3C"
             disabled={isCalibrating}
-          />
-
-          <Button 
-            title="Add Cal Sample"
-            onPress={() => {
-              if (isCalibrating) {
-                console.log("Manually adding calibration sample");
-                CalibrationProcessor.addCalibrationSample(accelData);
-              } else {
-                Alert.alert('Not Calibrating', 'Start calibration first.');
-              }
-            }}
-            color="#FF9500"
-            disabled={!isCalibrating}
-          />
-
+          >
+            <Text style={styles.buttonText}>Logout</Text>
+          </TouchableOpacity>
         </View>
         
-        <SensorDisplay title="Accelerometer (G)" data={accelData} color="#FF6B6B" scale={1} showProcessed={showProcessed} />
-        <SensorDisplay title="Gyroscope (rad/s)" data={gyroData} color="#4ECDC4" scale={2} showProcessed={showProcessed} />
-        <SensorDisplay title="Magnetometer (μT)" data={magData} color="#45B7D1" scale={0.1} showProcessed={showProcessed} />
-
-        <DebugPanel 
-  rawData={rawAccelData}
-  processedData={transformedAccelData || accelData}
-  calibrationOffsets={CoordinateTransformer.calibrationVector || { x: 0, y: 0, z: 0 }}
-  isCalibrated={CoordinateTransformer.calibrated}
-/>
+        {/* Sensor displays */}
+        <SensorDisplay 
+          title="Accelerometer (G)" 
+          data={showProcessed ? processedAccelData : accelData} 
+          color="#FF6B6B" 
+          scale={1} 
+          showProcessed={showProcessed} 
+        />
+        
+        <SensorDisplay 
+          title="Gyroscope (rad/s)" 
+          data={gyroData} 
+          color="#4ECDC4" 
+          scale={2} 
+          showProcessed={showProcessed} 
+        />
+        
+        <SensorDisplay 
+          title="Magnetometer (μT)" 
+          data={magData} 
+          color="#45B7D1" 
+          scale={0.1} 
+          showProcessed={showProcessed} 
+        />
+        
+        {/* Debug panel */}
+        {showDebugPanel && (
+          <DebugPanel 
+            rawData={accelData}
+            processedData={processedAccelData}
+            calibrationOffsets={CalibrationSystem.getCalibrationInfo().vector || { x: 0, y: 0, z: 0 }}
+            isCalibrated={isCalibrated}
+          />
+        )}
       </View>
     </ScrollView>
   );
@@ -573,10 +691,27 @@ const styles = StyleSheet.create({
     color: 'white',
     marginBottom: 20,
   },
-  dataCount: {
+  recordingStatus: {
+    backgroundColor: '#E74C3C',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    marginBottom: 15,
+  },
+  recordingText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  calibrationStatus: {
     color: 'white',
     fontSize: 16,
     marginBottom: 10,
+  },
+  powerMode: {
+    color: '#4ECDC4',
+    fontSize: 14,
+    marginBottom: 15,
   },
   calibrationOverlay: {
     position: 'absolute',
@@ -584,10 +719,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 15,
+    zIndex: 1000,
   },
   calibrationText: {
     color: 'white',
@@ -600,13 +736,58 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 15,
   },
+  cancelButton: {
+    backgroundColor: '#E74C3C',
+    padding: 10,
+    borderRadius: 5,
+    marginTop: 20,
+  },
+  cancelButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
   buttonContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     width: '100%',
     marginBottom: 20,
-    flexWrap: 'wrap',
     gap: 10,
+  },
+  actionButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    minWidth: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  startButton: {
+    backgroundColor: '#2ECC71',
+  },
+  stopButton: {
+    backgroundColor: '#E74C3C',
+  },
+  calibrateButton: {
+    backgroundColor: '#3498DB',
+  },
+  clearButton: {
+    backgroundColor: '#95A5A6',
+  },
+  toggleButton: {
+    backgroundColor: '#9B59B6',
+  },
+  logoutButton: {
+    backgroundColor: '#34495E',
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  buttonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });
 

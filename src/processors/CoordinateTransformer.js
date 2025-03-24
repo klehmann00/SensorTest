@@ -1,86 +1,171 @@
 // src/processors/CoordinateTransformer.js
+
+/**
+ * Handles coordinate transformations to account for device orientation
+ * Standardized coordinate system:
+ * - X-axis: Lateral (side-to-side movement)
+ * - Y-axis: Longitudinal (forward-backward movement)
+ * - Z-axis: Vertical (up-down movement)
+ */
 class CoordinateTransformer {
   constructor() {
     // Default identity transformation matrix
     this.transformMatrix = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1]
+      [1, 0, 0], // X-axis (maps to lateral)
+      [0, 1, 0], // Y-axis (maps to longitudinal)
+      [0, 0, 1]  // Z-axis (maps to vertical)
     ];
     
-    // Calibration offsets (used for simple offset calibration)
+    // Calibration offset vector (used for simple offset calibration)
     this.calibrationVector = null;
     
-    // Reference gravity vector (device lying flat)
+    // Reference gravity vector (default is device lying flat)
     this.referenceGravity = { x: 0, y: 0, z: 1 };
     
     // Flag to track if calibration has been performed
     this.calibrated = false;
     
+    // Store calibration information for diagnostics
+    this.calibrationInfo = null;
+    
     console.log('CoordinateTransformer initialized with identity matrix');
   }
   
   /**
-   * Sets the transformation matrix directly
-   * 
-   * @param {Array} matrix - 3x3 transformation matrix
+   * Apply coordinate transformation to sensor data
+   * @param {Object} data - Raw sensor data {x, y, z}
+   * @returns {Object} Transformed data
    */
- // In CoordinateTransformer.js, simplify setTransformMatrix
-
-setTransformMatrix(matrix) {
-  if (!matrix || !Array.isArray(matrix) || matrix.length !== 3) {
-    console.error('Invalid transformation matrix');
-    return false;
+  applyTransformation(data) {
+    if (!this.validateData(data)) {
+      return { raw: data || {}, transformed: data || {} };
+    }
+    
+    try {
+      // Store raw values with consistent naming
+      const result = {
+        raw: {
+          x: data.x, // lateral
+          y: data.y, // longitudinal
+          z: data.z, // vertical
+          timestamp: data.timestamp
+        }
+      };
+      
+      if (!this.calibrated) {
+        // No calibration, just standardize property names
+        result.transformed = { ...result.raw };
+        return result;
+      }
+      
+      // Extract raw values
+      const rawX = data.x;
+      const rawY = data.y;
+      const rawZ = data.z;
+      
+      let transformedX, transformedY, transformedZ;
+      
+      if (this.transformMatrix) {
+        // Apply full orthogonal transformation using matrix
+        const rawVec = [rawX, rawY, rawZ];
+        
+        // Matrix-vector multiplication
+        transformedX = 
+          this.transformMatrix[0][0] * rawVec[0] + 
+          this.transformMatrix[0][1] * rawVec[1] + 
+          this.transformMatrix[0][2] * rawVec[2];
+          
+        transformedY = 
+          this.transformMatrix[1][0] * rawVec[0] + 
+          this.transformMatrix[1][1] * rawVec[1] + 
+          this.transformMatrix[1][2] * rawVec[2];
+          
+        transformedZ = 
+          this.transformMatrix[2][0] * rawVec[0] + 
+          this.transformMatrix[2][1] * rawVec[1] + 
+          this.transformMatrix[2][2] * rawVec[2];
+      } else if (this.calibrationVector) {
+        // Simple offset subtraction as fallback
+        transformedX = rawX - this.calibrationVector.x;
+        transformedY = rawY - this.calibrationVector.y;
+        transformedZ = rawZ - this.calibrationVector.z;
+        
+        // After offset, z should be close to 1.0 (gravity)
+        transformedZ = transformedZ + 1.0;
+      } else {
+        // No transformation data available, use raw values
+        transformedX = rawX;
+        transformedY = rawY;
+        transformedZ = rawZ;
+      }
+      
+      // Store transformed values with consistent naming
+      result.transformed = {
+        x: transformedX, // lateral
+        y: transformedY, // longitudinal
+        z: transformedZ, // vertical
+        timestamp: data.timestamp
+      };
+      
+      return result;
+    } catch (error) {
+      console.error('Error applying transformation:', error);
+      return { 
+        raw: { x: data.x, y: data.y, z: data.z, timestamp: data.timestamp },
+        transformed: { x: data.x, y: data.y, z: data.z, timestamp: data.timestamp },
+        error: true
+      };
+    }
   }
   
-  // Validate matrix structure
-  const isValid = matrix.every(row => 
-    Array.isArray(row) && row.length === 3 && 
-    row.every(val => typeof val === 'number')
-  );
-  
-  if (!isValid) {
-    console.error('Transformation matrix has invalid structure');
-    return false;
-  }
-  
-  this.transformMatrix = [...matrix];
-  this.calibrated = true;
-  console.log('Transformation matrix set:', this.transformMatrix);
-  return true;
-}
-
   /**
-   * Calculate a transformation matrix from calibration samples
-   * 
+   * Sets the transformation matrix directly
+   * @param {Array} matrix - 3x3 transformation matrix
+   * @returns {boolean} Success status
+   */
+  setTransformMatrix(matrix) {
+    if (!matrix || !Array.isArray(matrix) || matrix.length !== 3) {
+      console.error('Invalid transformation matrix');
+      return false;
+    }
+    
+    // Validate matrix structure
+    const isValid = matrix.every(row => 
+      Array.isArray(row) && row.length === 3 && 
+      row.every(val => typeof val === 'number')
+    );
+    
+    if (!isValid) {
+      console.error('Transformation matrix has invalid structure');
+      return false;
+    }
+    
+    this.transformMatrix = [...matrix];
+    this.calibrated = true;
+    console.log('Transformation matrix set:', this.transformMatrix);
+    return true;
+  }
+  
+  /**
+   * Calculate transformation matrix from calibration samples
    * @param {Array} samples - Array of accelerometer readings during calibration
-   * @returns {Array} The calculated transformation matrix
+   * @returns {Array} Transformation matrix
    */
   calculateTransformMatrix(samples) {
     console.log("Starting matrix calculation with", samples.length, "samples");
     
-    if (!samples || !Array.isArray(samples) || samples.length === 0) {
+    if (!this.validateSamples(samples)) {
       console.error('Invalid calibration samples');
       return null;
     }
     
     try {
       // Calculate average acceleration vector during calibration
-      const avgVector = {
-        x: samples.reduce((sum, s) => sum + s.x, 0) / samples.length,
-        y: samples.reduce((sum, s) => sum + s.y, 0) / samples.length,
-        z: samples.reduce((sum, s) => sum + s.z, 0) / samples.length
-      };
-      
+      const avgVector = this.calculateAverageVector(samples);
       console.log("Average calibration vector:", avgVector);
       
       // Calculate magnitude
-      const magnitude = Math.sqrt(
-        avgVector.x * avgVector.x + 
-        avgVector.y * avgVector.y + 
-        avgVector.z * avgVector.z
-      );
-      
+      const magnitude = this.calculateMagnitude(avgVector);
       console.log("Calibration vector magnitude:", magnitude);
       
       if (magnitude < 0.5) {
@@ -91,14 +176,14 @@ setTransformMatrix(matrix) {
       // Save the calibration vector for offset subtraction
       this.calibrationVector = { ...avgVector };
       
-      // Normalization step - critical for creating a proper transformation matrix
+      // Normalize gravity vector
       const normalizedGravity = {
         x: avgVector.x / magnitude,
         y: avgVector.y / magnitude,
         z: avgVector.z / magnitude
       };
       
-      // The new Z axis should be opposite to gravity
+      // The new Z axis should point opposite to gravity
       const newZ = [-normalizedGravity.x, -normalizedGravity.y, -normalizedGravity.z];
       
       // Find a vector perpendicular to Z axis (for X axis)
@@ -113,7 +198,7 @@ setTransformMatrix(matrix) {
       // Normalize X axis
       const newXnorm = this.normalizeVector(newX);
       
-      // Find Y axis using cross product of Z and X
+      // Find Y axis using cross product of Z and X (ensures orthogonality)
       const newY = this.crossProduct(newZ, newXnorm);
       // Normalize Y axis
       const newYnorm = this.normalizeVector(newY);
@@ -121,10 +206,24 @@ setTransformMatrix(matrix) {
       // Construct transformation matrix
       // Each row is one of our new basis vectors
       this.transformMatrix = [
-        newXnorm,
-        newYnorm,
-        newZ
+        newXnorm, // X-axis (maps to lateral)
+        newYnorm, // Y-axis (maps to longitudinal)
+        newZ      // Z-axis (maps to vertical)
       ];
+      
+      // Store calibration info for diagnostics
+      this.calibrationInfo = {
+        averageVector: avgVector,
+        magnitude: magnitude,
+        normalizedGravity: normalizedGravity,
+        basis: {
+          x: newXnorm,
+          y: newYnorm,
+          z: newZ
+        },
+        timestamp: Date.now(),
+        sampleCount: samples.length
+      };
       
       this.calibrated = true;
       console.log("Final transformation matrix:", this.transformMatrix);
@@ -136,139 +235,100 @@ setTransformMatrix(matrix) {
   }
   
   /**
-   * Apply proper orthogonal transformation to sensor data
-   * 
-   * @param {Object} data - The raw sensor data {x, y, z}
-   * @returns {Object} Transformed sensor data
+   * Validate calibration samples
+   * @param {Array} samples - Calibration samples
+   * @returns {boolean} Whether samples are valid
    */
-  applyTransformation(data) {
-    if (!data || typeof data !== 'object') return data;
-    
-    try {
-      console.log("Applying transformation, calibrated:", this.calibrated);
+  validateSamples(samples) {
+    return samples && 
+           Array.isArray(samples) && 
+           samples.length > 0 &&
+           samples.every(s => this.validateData(s));
+  }
   
-      // Store the original values
-      const rawX = data.x;
-      const rawY = data.y;
-      const rawZ = data.z;
-      
-      // Get filtered values if they exist
-      const hasFiltered = 
-        data.filtered_x !== undefined && 
-        data.filtered_y !== undefined && 
-        data.filtered_z !== undefined;
-      
-      let transformedX, transformedY, transformedZ;
-      let filteredX, filteredY, filteredZ;
-      
-      if (this.calibrated) {
-        if (this.transformMatrix) {
-          // Apply full orthogonal transformation using matrix
-          const rawVec = [rawX, rawY, rawZ];
-          
-          // Matrix-vector multiplication
-          transformedX = 
-            this.transformMatrix[0][0] * rawVec[0] + 
-            this.transformMatrix[0][1] * rawVec[1] + 
-            this.transformMatrix[0][2] * rawVec[2];
-            
-          transformedY = 
-            this.transformMatrix[1][0] * rawVec[0] + 
-            this.transformMatrix[1][1] * rawVec[1] + 
-            this.transformMatrix[1][2] * rawVec[2];
-            
-          transformedZ = 
-            this.transformMatrix[2][0] * rawVec[0] + 
-            this.transformMatrix[2][1] * rawVec[1] + 
-            this.transformMatrix[2][2] * rawVec[2];
-          
-          console.log("Matrix transform results:", {
-            raw: [rawX, rawY, rawZ],
-            transformed: [transformedX, transformedY, transformedZ]
-          });
-          
-          // Also apply matrix to filtered values if available
-          if (hasFiltered) {
-            const filteredVec = [data.filtered_x, data.filtered_y, data.filtered_z];
-            
-            filteredX = 
-              this.transformMatrix[0][0] * filteredVec[0] + 
-              this.transformMatrix[0][1] * filteredVec[1] + 
-              this.transformMatrix[0][2] * filteredVec[2];
-              
-            filteredY = 
-              this.transformMatrix[1][0] * filteredVec[0] + 
-              this.transformMatrix[1][1] * filteredVec[1] + 
-              this.transformMatrix[1][2] * filteredVec[2];
-              
-            filteredZ = 
-              this.transformMatrix[2][0] * filteredVec[0] + 
-              this.transformMatrix[2][1] * filteredVec[1] + 
-              this.transformMatrix[2][2] * filteredVec[2];
-          }
-        } else if (this.calibrationVector) {
-          // Simple offset subtraction as fallback
-          transformedX = rawX - this.calibrationVector.x;
-          transformedY = rawY - this.calibrationVector.y;
-          transformedZ = rawZ - this.calibrationVector.z;
-          
-          // After offset, z should be close to 1.0 (gravity)
-          transformedZ = transformedZ + 1.0;
-          
-          console.log("Offset transform results:", {
-            raw: [rawX, rawY, rawZ],
-            offsets: [this.calibrationVector.x, this.calibrationVector.y, this.calibrationVector.z],
-            transformed: [transformedX, transformedY, transformedZ]
-          });
-          
-          if (hasFiltered) {
-            filteredX = data.filtered_x - this.calibrationVector.x;
-            filteredY = data.filtered_y - this.calibrationVector.y;
-            filteredZ = data.filtered_z - this.calibrationVector.z + 1.0;
-          }
-        }
-      } else {
-        // No calibration, just pass through
-        transformedX = rawX;
-        transformedY = rawY;
-        transformedZ = rawZ;
-        
-        if (hasFiltered) {
-          filteredX = data.filtered_x;
-          filteredY = data.filtered_y;
-          filteredZ = data.filtered_z;
-        }
-      }
-      
-      // Return data with all processing stages
-      const result = {
-        raw_x: rawX,
-        raw_y: rawY,
-        raw_z: rawZ,
-        
-        // Transformed values
-        x: transformedX,
-        y: transformedY,
-        z: transformedZ,
-        
-        // Consistent mapping - X is lateral, Y is longitudinal, Z is vertical
-        lateral: transformedX,
-        longitudinal: transformedY,
-        vertical: transformedZ,
-      };
-      
-      // Add filtered values if they existed in input
-      if (hasFiltered) {
-        result.filtered_x = filteredX;
-        result.filtered_y = filteredY;
-        result.filtered_z = filteredZ;
-      }
-      
-      return result;
-    } catch (error) {
-      console.error('Error applying transformation:', error);
-      return data;
+  /**
+   * Validate sensor data structure
+   * @param {Object} data - Sensor data
+   * @returns {boolean} Whether data is valid
+   */
+  validateData(data) {
+    return data && 
+           typeof data === 'object' && 
+           'x' in data && 
+           'y' in data && 
+           'z' in data &&
+           !isNaN(data.x) && 
+           !isNaN(data.y) && 
+           !isNaN(data.z);
+  }
+  
+  /**
+   * Calculate average vector from samples
+   * @param {Array} samples - Sensor data samples
+   * @returns {Object} Average vector
+   */
+  calculateAverageVector(samples) {
+    const sum = samples.reduce((acc, sample) => ({
+      x: acc.x + sample.x,
+      y: acc.y + sample.y,
+      z: acc.z + sample.z
+    }), { x: 0, y: 0, z: 0 });
+    
+    return {
+      x: sum.x / samples.length,
+      y: sum.y / samples.length,
+      z: sum.z / samples.length
+    };
+  }
+  
+  /**
+   * Calculate magnitude of a vector
+   * @param {Object} vector - Vector object with x, y, z components
+   * @returns {number} Vector magnitude
+   */
+  calculateMagnitude(vector) {
+    return Math.sqrt(
+      vector.x * vector.x + 
+      vector.y * vector.y + 
+      vector.z * vector.z
+    );
+  }
+  
+  /**
+   * Normalize a vector
+   * @param {Array} vec - Vector as array [x, y, z]
+   * @returns {Array} Normalized vector
+   */
+  normalizeVector(vec) {
+    const magnitude = Math.sqrt(
+      vec[0] * vec[0] + 
+      vec[1] * vec[1] + 
+      vec[2] * vec[2]
+    );
+    
+    if (magnitude === 0) {
+      return [0, 0, 0];
     }
+    
+    return [
+      vec[0] / magnitude,
+      vec[1] / magnitude,
+      vec[2] / magnitude
+    ];
+  }
+  
+  /**
+   * Compute cross product of two vectors
+   * @param {Array} a - First vector
+   * @param {Array} b - Second vector
+   * @returns {Array} Cross product vector
+   */
+  crossProduct(a, b) {
+    return [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0]
+    ];
   }
   
   /**
@@ -282,21 +342,55 @@ setTransformMatrix(matrix) {
     ];
     this.calibrationVector = null;
     this.calibrated = false;
+    this.calibrationInfo = null;
     console.log('CoordinateTransformer reset to identity matrix');
+    return true;
   }
   
-  // ADD THE NEW METHODS HERE
-  normalizeVector(vec) {
-    const magnitude = Math.sqrt(vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2]);
-    return [vec[0]/magnitude, vec[1]/magnitude, vec[2]/magnitude];
+  /**
+   * Get calibration information
+   * @returns {Object} Calibration information
+   */
+  getCalibrationInfo() {
+    if (!this.calibrated) {
+      return {
+        calibrated: false,
+        message: 'Device not calibrated'
+      };
+    }
+    
+    return {
+      calibrated: true,
+      matrix: this.transformMatrix,
+      vector: this.calibrationVector,
+      info: this.calibrationInfo,
+      timestamp: this.calibrationInfo?.timestamp || Date.now()
+    };
   }
-
-  crossProduct(a, b) {
-    return [
-      a[1] * b[2] - a[2] * b[1],
-      a[2] * b[0] - a[0] * b[2],
-      a[0] * b[1] - a[1] * b[0]
-    ];
+  
+  /**
+   * Get a description of the device orientation
+   * @returns {string} Orientation description
+   */
+  getOrientationDescription() {
+    if (!this.calibrated) {
+      return 'Device not calibrated';
+    }
+    
+    // This is a simple approximation - for a full orientation description,
+    // we would need to analyze the rotation matrix more thoroughly
+    const zAxis = this.transformMatrix[2];
+    
+    // Find which way gravity is pointing
+    if (Math.abs(zAxis[2]) > 0.8) {
+      return 'Device is flat (z-up)';
+    } else if (Math.abs(zAxis[0]) > 0.8) {
+      return zAxis[0] > 0 ? 'Device on right side' : 'Device on left side';
+    } else if (Math.abs(zAxis[1]) > 0.8) {
+      return zAxis[1] > 0 ? 'Device pointing forward' : 'Device pointing backward';
+    } else {
+      return 'Device in intermediate orientation';
+    }
   }
 }
 

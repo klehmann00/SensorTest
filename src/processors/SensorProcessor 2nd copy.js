@@ -1,7 +1,7 @@
 // src/processors/SensorProcessor.js
 import CoordinateTransformer from './CoordinateTransformer';
 
-// Simple implementation that avoids class instantiation issues
+// Simple implementation that follows a clear pipeline
 const SensorProcessor = {
   // Configuration
   config: {
@@ -48,44 +48,43 @@ const SensorProcessor = {
     return true;
   },
   
-  // Process accelerometer data
+  // Process accelerometer data - follows the exact algorithm we discussed
   processAccelerometerData: function(rawData) {
     if (!rawData) return rawData;
-    
+    console.log('Filtering enabled:', this.config.useFiltering);
+
     try {
-      // Ensure timestamp
-      const timestampedData = {
-        ...rawData,
-        timestamp: rawData.timestamp || Date.now()
-      };
+      // Copy the rawData to avoid modifying the original
+      let data = { ...rawData, timestamp: rawData.timestamp || Date.now() };
       
-      // Step 1: Always apply transformation if calibrated
-      let transformedData;
+      // STEP 1: If calibrated, apply transformation
       if (this.config.useCalibration && CoordinateTransformer.calibrated) {
-        transformedData = CoordinateTransformer.applyTransformation(timestampedData);
-      } else {
-        transformedData = {
-          raw: timestampedData,
-          transformed: timestampedData
-        };
+        const transformResult = CoordinateTransformer.applyTransformation(data);
+        data = transformResult.transformed; // Use the transformed data for next step
       }
       
-      // Step 2: Apply filtering if enabled (for processed mode)
+      // STEP 2: If in processed mode, apply filtering
       let filteredData = null;
       if (this.config.useFiltering) {
-        filteredData = this.applyFiltering(transformedData);
+        // Apply filtering directly to the data (which may be transformed or not)
+        filteredData = this.applyFiltering(data);
       }
       
-      // Return both transformed and filtered data
+      // Return data with all processing steps
       return {
-        // Raw data (original)
+        // Original raw data
         raw: rawData,
         
-        // Transformed data (with calibration applied)
-        transformed: transformedData.transformed,
+        // After transformation (if applied, otherwise same as raw)
+        transformed: data,
         
-        // Filtered data (with calibration and filtering)
-        filtered: filteredData ? filteredData.filtered : null
+        // After filtering (if applied, otherwise null)
+        filtered: filteredData,
+
+          // Add these properties directly at the root level
+        lateral: filteredData ? filteredData.x : data.x,
+        longitudinal: filteredData ? filteredData.y : data.y,
+        vertical: filteredData ? filteredData.z : data.z
       };
     } catch (error) {
       console.error('Error processing accelerometer data:', error);
@@ -97,30 +96,28 @@ const SensorProcessor = {
     }
   },
   
-  // Apply filtering to transformed data
-  applyFiltering: function(transformedData) {
-    const transformed = transformedData.transformed;
-    if (!transformed) return transformedData;
+  // Apply filtering directly to data (transformed or not)
+  applyFiltering: function(data) {
+    if (!data) return null;
     
     try {
-      // Apply low-pass filtering to transformed values
+      // Apply low-pass filtering
       const filtered = {
-        x: this.lowPassFilter(transformed.x, this.prevFiltered.x, this.config.processing.filter.x),
-        y: this.lowPassFilter(transformed.y, this.prevFiltered.y, this.config.processing.filter.y),
-        z: this.lowPassFilter(transformed.z, this.prevFiltered.z, this.config.processing.filter.z),
-        timestamp: transformed.timestamp
+        x: this.lowPassFilter(data.x, this.prevFiltered.x, this.config.processing.filter.x),
+        y: this.lowPassFilter(data.y, this.prevFiltered.y, this.config.processing.filter.y),
+        z: this.lowPassFilter(data.z, this.prevFiltered.z, this.config.processing.filter.z),
+        timestamp: data.timestamp
       };
       
       // Update previous values
       this.prevFiltered = { ...filtered };
       
-      return {
-        ...transformedData,
-        filtered: filtered
-      };
+      console.log('Filtering result:', filtered);
+
+      return filtered;
     } catch (error) {
       console.error('Error in filtering:', error);
-      return transformedData;
+      return null;
     }
   },
   

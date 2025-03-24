@@ -1,261 +1,282 @@
-// DataProcessing.js - Handles data filtering and processing
+// src/processors/DataProcessor.js
 
+/**
+ * Handles data filtering and smoothing
+ * This class applies filters to already-transformed data
+ */
 class DataProcessor {
-    constructor() {
-      // Previous values for rate limiting
-      this.prevAccelValues = { x: 0, y: 0, z: 0 };
-      this.prevGyroValues = { x: 0, y: 0, z: 0 };
-      this.prevMagValues = { x: 0, y: 0, z: 0 };
-      
-      // Previous filtered values for smoothing
-      this.prevFilteredAccel = { x: 0, y: 0, z: 0 };
-      this.prevFilteredGyro = { x: 0, y: 0, z: 0 };
-      this.prevFilteredMag = { x: 0, y: 0, z: 0 };
-      
-      // First reading flags
-      this.isFirstAccelReading = true;
-      this.isFirstGyroReading = true;
-      this.isFirstMagReading = true;
-      
-      // Default processing parameters
-      this.params = {
-        // Rate limiting settings (max change per reading)
-        maxDeltaAccelX: 0.025,  // G
-        maxDeltaAccelY: 0.01,   // G
-        maxDeltaAccelZ: 0.5,    // G
-        maxDeltaGyro: 0.2,      // rad/s
-        maxDeltaMag: 2.0,       // μT
-        
-        // Low-pass filter constants
-        filterAccelX: 0.05,     // Longitudinal (lower = more filtering)
-        filterAccelY: 0.1,      // Lateral (lower = more filtering)
-        filterAccelZ: 0.25,     // Vertical (lower = more filtering)
-        filterGyro: 0.1,        // Gyroscope
-        filterMag: 0.1          // Magnetometer
-      };
-      
-      console.log('DataProcessor initialized');
-    }
+  constructor() {
+    this.reset();
     
-    // Apply rate limiting to prevent large jumps in values
-    limitRateOfChange(newValue, oldValue, maxDelta) {
-      const delta = newValue - oldValue;
+    // Default processing parameters
+    this.params = {
+      // Rate limiting settings (max change per reading)
+      maxDelta: {
+        x: 0.025,  // Lateral axis (G)
+        y: 0.025,  // Longitudinal axis (G)
+        z: 0.05,   // Vertical axis (G)
+      },
       
-      if (delta > maxDelta) {
-        return oldValue + maxDelta;
-      } else if (delta < -maxDelta) {
-        return oldValue - maxDelta;
-      } else {
-        return newValue;
+      // Low-pass filter constants (lower = more filtering)
+      filter: {
+        x: 0.1,    // Lateral axis
+        y: 0.1,    // Longitudinal axis
+        z: 0.2,    // Vertical axis
       }
-    }
-    
-    // Apply low-pass filter for smoothing
-    applyLowPassFilter(newValue, oldValue, alpha) {
-      return alpha * newValue + (1 - alpha) * oldValue;
-    }
-    
-    // Process accelerometer data
-   // Process accelerometer data
-processAccelerometerData(data) {
-  // For first reading, initialize values without processing
-  if (this.isFirstAccelReading) {
-    this.isFirstAccelReading = false;
-    
-    // Extract the values using the correct property names
-    const x = data.longitudinal !== undefined ? data.longitudinal : data.x;
-    const y = data.lateral !== undefined ? data.lateral : data.y;
-    const z = data.vertical !== undefined ? data.vertical : data.z;
-    
-    this.prevAccelValues = { x, y, z };
-    this.prevFilteredAccel = { x, y, z };
-    
-    return {
-      ...data,
-      raw_x: data.raw_x || data.x,
-      raw_y: data.raw_y || data.y,
-      raw_z: data.raw_z || data.z,
-      limited_x: x,
-      limited_y: y,
-      limited_z: z,
-      filtered_x: x,
-      filtered_y: y,
-      filtered_z: z
     };
+    
+    console.log('DataProcessor initialized with default parameters');
   }
   
-  // Extract values using the correct property names
-  const rawX = data.longitudinal !== undefined ? data.longitudinal : data.x;
-  const rawY = data.lateral !== undefined ? data.lateral : data.y;
-  const rawZ = data.vertical !== undefined ? data.vertical : data.z;
+  /**
+   * Reset processor state
+   */
+  reset() {
+    // Previous values for rate limiting
+    this.prevValues = { x: 0, y: 0, z: 0 };
+    
+    // Previous filtered values for smoothing
+    this.prevFiltered = { x: 0, y: 0, z: 0 };
+    
+    // First reading flag
+    this.isFirstReading = true;
+    
+    // Store the last processing timestamp
+    this.lastProcessingTime = 0;
+    
+    console.log('DataProcessor reset');
+    return this;
+  }
   
-  // Apply rate limiting
-  const limitedX = this.limitRateOfChange(
-    rawX, this.prevAccelValues.x, this.params.maxDeltaAccelX);
-  const limitedY = this.limitRateOfChange(
-    rawY, this.prevAccelValues.y, this.params.maxDeltaAccelY);
-  const limitedZ = this.limitRateOfChange(
-    rawZ, this.prevAccelValues.z, this.params.maxDeltaAccelZ);
+  /**
+   * Configure processing parameters
+   * @param {Object} params - Processing parameters
+   * @returns {DataProcessor} this instance for chaining
+   */
+  configure(params = {}) {
+    // Update maxDelta settings
+    if (params.maxDelta) {
+      this.params.maxDelta = {
+        ...this.params.maxDelta,
+        ...params.maxDelta
+      };
+    }
+    
+    // Update filter settings
+    if (params.filter) {
+      this.params.filter = {
+        ...this.params.filter,
+        ...params.filter
+      };
+    }
+    
+    console.log('DataProcessor configured with parameters:', this.params);
+    return this;
+  }
   
-  // Store current limited values for next time
-  this.prevAccelValues = { x: limitedX, y: limitedY, z: limitedZ };
+  /**
+   * Process accelerometer data with filtering and rate limiting
+   * @param {Object} data - Transformed accelerometer data
+   * @returns {Object} Processed data
+   */
+  processAccelerometerData(data) {
+    // Check for valid data structure
+    if (!data || !data.transformed) {
+      console.warn('Invalid data structure for processing');
+      return data;
+    }
+    
+    try {
+      const transformed = data.transformed;
+      const now = data.transformed.timestamp || Date.now();
+      
+      // For first reading, just store values and return without processing
+      if (this.isFirstReading) {
+        this.isFirstReading = false;
+        this.prevValues = { 
+          x: transformed.x,
+          y: transformed.y,
+          z: transformed.z
+        };
+        this.prevFiltered = { 
+          x: transformed.x,
+          y: transformed.y,
+          z: transformed.z
+        };
+        this.lastProcessingTime = now;
+        
+        // Return data with processed values equal to transformed
+        return {
+          ...data,
+          limited: { ...transformed },
+          filtered: { ...transformed },
+          processed: { ...transformed }
+        };
+      }
+      
+      // Apply rate limiting to prevent large jumps in values
+      const limited = {
+        x: this.limitRateOfChange(transformed.x, this.prevValues.x, this.params.maxDelta.x),
+        y: this.limitRateOfChange(transformed.y, this.prevValues.y, this.params.maxDelta.y),
+        z: this.limitRateOfChange(transformed.z, this.prevValues.z, this.params.maxDelta.z),
+        timestamp: now
+      };
+      
+      // Update previous values for next iteration
+      this.prevValues = { 
+        x: limited.x,
+        y: limited.y,
+        z: limited.z
+      };
+      
+      // Apply low-pass filter to smoothed values
+      const filtered = {
+        x: this.applyLowPassFilter(limited.x, this.prevFiltered.x, this.params.filter.x),
+        y: this.applyLowPassFilter(limited.y, this.prevFiltered.y, this.params.filter.y),
+        z: this.applyLowPassFilter(limited.z, this.prevFiltered.z, this.params.filter.z),
+        timestamp: now
+      };
+      
+      // Update previous filtered values for next iteration
+      this.prevFiltered = { 
+        x: filtered.x,
+        y: filtered.y,
+        z: filtered.z
+      };
+      
+      // Update processing timestamp
+      this.lastProcessingTime = now;
+      
+      // Return data with all processing stages
+      return {
+        ...data,
+        limited,
+        filtered,
+        processed: {
+          x: filtered.x,  // lateral
+          y: filtered.y,  // longitudinal
+          z: filtered.z,  // vertical
+          timestamp: now
+        }
+      };
+    } catch (error) {
+      console.error('Error processing accelerometer data:', error);
+      
+      // Return original data if processing fails
+      return {
+        ...data,
+        error: true,
+        errorMessage: error.message
+      };
+    }
+  }
   
-  // Apply low-pass filter to the rate-limited values
-  const filteredX = this.applyLowPassFilter(
-    limitedX, this.prevFilteredAccel.x, this.params.filterAccelX);
-  const filteredY = this.applyLowPassFilter(
-    limitedY, this.prevFilteredAccel.y, this.params.filterAccelY);
-  const filteredZ = this.applyLowPassFilter(
-    limitedZ, this.prevFilteredAccel.z, this.params.filterAccelZ);
+  /**
+   * Process gyroscope data
+   * @param {Object} data - Transformed gyroscope data
+   * @returns {Object} Processed data
+   */
+  processGyroscopeData(data) {
+    // Similar structure to processAccelerometerData but with appropriate
+    // parameters for gyroscope data
+    if (!data || !data.transformed) {
+      return data;
+    }
+    
+    try {
+      const transformed = data.transformed;
+      const now = data.transformed.timestamp || Date.now();
+      
+      // For first reading, initialize and return
+      if (this.isFirstReading) {
+        this.isFirstReading = false;
+        this.prevValues = { ...transformed };
+        this.prevFiltered = { ...transformed };
+        this.lastProcessingTime = now;
+        
+        return {
+          ...data,
+          limited: { ...transformed },
+          filtered: { ...transformed },
+          processed: { ...transformed }
+        };
+      }
+      
+      // Apply rate limiting (using gyro-specific parameters if needed)
+      const limited = {
+        x: this.limitRateOfChange(transformed.x, this.prevValues.x, this.params.maxDelta.x),
+        y: this.limitRateOfChange(transformed.y, this.prevValues.y, this.params.maxDelta.y),
+        z: this.limitRateOfChange(transformed.z, this.prevValues.z, this.params.maxDelta.z),
+        timestamp: now
+      };
+      
+      this.prevValues = { ...limited };
+      
+      // Apply filtering
+      const filtered = {
+        x: this.applyLowPassFilter(limited.x, this.prevFiltered.x, this.params.filter.x),
+        y: this.applyLowPassFilter(limited.y, this.prevFiltered.y, this.params.filter.y),
+        z: this.applyLowPassFilter(limited.z, this.prevFiltered.z, this.params.filter.z),
+        timestamp: now
+      };
+      
+      this.prevFiltered = { ...filtered };
+      this.lastProcessingTime = now;
+      
+      return {
+        ...data,
+        limited,
+        filtered,
+        processed: { ...filtered }
+      };
+    } catch (error) {
+      console.error('Error processing gyroscope data:', error);
+      return {
+        ...data,
+        error: true,
+        errorMessage: error.message
+      };
+    }
+  }
   
-  // Store filtered values for next time
-  this.prevFilteredAccel = { x: filteredX, y: filteredY, z: filteredZ };
+  /**
+   * Apply rate limiting to prevent large jumps in values
+   * @param {number} newValue - New value
+   * @param {number} oldValue - Previous value
+   * @param {number} maxDelta - Maximum allowed change
+   * @returns {number} Rate-limited value
+   */
+  limitRateOfChange(newValue, oldValue, maxDelta) {
+    const delta = newValue - oldValue;
+    
+    if (delta > maxDelta) {
+      return oldValue + maxDelta;
+    } else if (delta < -maxDelta) {
+      return oldValue - maxDelta;
+    } else {
+      return newValue;
+    }
+  }
   
-  // Return data with all processing stages
-  return {
-    ...data,
-    raw_x: data.raw_x || data.x,
-    raw_y: data.raw_y || data.y,
-    raw_z: data.raw_z || data.z,
-    limited_x: limitedX,
-    limited_y: limitedY,
-    limited_z: limitedZ,
-    filtered_x: filteredX,
-    filtered_y: filteredY,
-    filtered_z: filteredZ
-  };
+  /**
+   * Apply low-pass filter for smoothing
+   * @param {number} newValue - New value
+   * @param {number} oldValue - Previous filtered value
+   * @param {number} alpha - Filter coefficient (0-1, higher = less filtering)
+   * @returns {number} Filtered value
+   */
+  applyLowPassFilter(newValue, oldValue, alpha) {
+    return alpha * newValue + (1 - alpha) * oldValue;
+  }
+  
+  /**
+   * Get current processing parameters
+   * @returns {Object} Processing parameters
+   */
+  getParameters() {
+    return { ...this.params };
+  }
 }
-    
-    // Process gyroscope data
-    processGyroscopeData(data) {
-      // For first reading, initialize values without processing
-      if (this.isFirstGyroReading) {
-        this.isFirstGyroReading = false;
-        this.prevGyroValues = { ...data };
-        this.prevFilteredGyro = { ...data };
-        
-        return {
-          ...data,
-          raw_x: data.x,
-          raw_y: data.y,
-          raw_z: data.z,
-          filtered_x: data.x,
-          filtered_y: data.y,
-          filtered_z: data.z
-        };
-      }
-      
-      // Apply rate limiting to all axes
-      const limitedX = this.limitRateOfChange(
-        data.x, this.prevGyroValues.x, this.params.maxDeltaGyro);
-      const limitedY = this.limitRateOfChange(
-        data.y, this.prevGyroValues.y, this.params.maxDeltaGyro);
-      const limitedZ = this.limitRateOfChange(
-        data.z, this.prevGyroValues.z, this.params.maxDeltaGyro);
-      
-      // Store limited values for next time
-      this.prevGyroValues = { x: limitedX, y: limitedY, z: limitedZ };
-      
-      // Apply filtering
-      const filteredX = this.applyLowPassFilter(
-        limitedX, this.prevFilteredGyro.x, this.params.filterGyro);
-      const filteredY = this.applyLowPassFilter(
-        limitedY, this.prevFilteredGyro.y, this.params.filterGyro);
-      const filteredZ = this.applyLowPassFilter(
-        limitedZ, this.prevFilteredGyro.z, this.params.filterGyro);
-      
-      // Store filtered values for next time
-      this.prevFilteredGyro = { x: filteredX, y: filteredY, z: filteredZ };
-      
-      return {
-        ...data,
-        raw_x: data.x,
-        raw_y: data.y,
-        raw_z: data.z,
-        filtered_x: filteredX,
-        filtered_y: filteredY,
-        filtered_z: filteredZ
-      };
-    }
-    
-    // Process magnetometer data
-    processMagnetometerData(data) {
-      // For first reading, initialize values without processing
-      if (this.isFirstMagReading) {
-        this.isFirstMagReading = false;
-        this.prevMagValues = { ...data };
-        this.prevFilteredMag = { ...data };
-        
-        return {
-          ...data,
-          raw_x: data.x,
-          raw_y: data.y,
-          raw_z: data.z,
-          filtered_x: data.x,
-          filtered_y: data.y,
-          filtered_z: data.z
-        };
-      }
-      
-      // Apply rate limiting to all axes
-      const limitedX = this.limitRateOfChange(
-        data.x, this.prevMagValues.x, this.params.maxDeltaMag);
-      const limitedY = this.limitRateOfChange(
-        data.y, this.prevMagValues.y, this.params.maxDeltaMag);
-      const limitedZ = this.limitRateOfChange(
-        data.z, this.prevMagValues.z, this.params.maxDeltaMag);
-      
-      // Store limited values for next time
-      this.prevMagValues = { x: limitedX, y: limitedY, z: limitedZ };
-      
-      // Apply filtering
-      const filteredX = this.applyLowPassFilter(
-        limitedX, this.prevFilteredMag.x, this.params.filterMag);
-      const filteredY = this.applyLowPassFilter(
-        limitedY, this.prevFilteredMag.y, this.params.filterMag);
-      const filteredZ = this.applyLowPassFilter(
-        limitedZ, this.prevFilteredMag.z, this.params.filterMag);
-      
-      // Store filtered values for next time
-      this.prevFilteredMag = { x: filteredX, y: filteredY, z: filteredZ };
-      
-      return {
-        ...data,
-        raw_x: data.x,
-        raw_y: data.y,
-        raw_z: data.z,
-        filtered_x: filteredX,
-        filtered_y: filteredY,
-        filtered_z: filteredZ
-      };
-    }
-    
-    // Update processing parameters
-    updateParameters(newParams) {
-      this.params = {
-        ...this.params,
-        ...newParams
-      };
-      console.log('DataProcessor parameters updated:', this.params);
-    }
-    
-    // Reset processor state
-    reset() {
-      this.isFirstAccelReading = true;
-      this.isFirstGyroReading = true;
-      this.isFirstMagReading = true;
-      
-      this.prevAccelValues = { x: 0, y: 0, z: 0 };
-      this.prevGyroValues = { x: 0, y: 0, z: 0 };
-      this.prevMagValues = { x: 0, y: 0, z: 0 };
-      
-      this.prevFilteredAccel = { x: 0, y: 0, z: 0 };
-      this.prevFilteredGyro = { x: 0, y: 0, z: 0 };
-      this.prevFilteredMag = { x: 0, y: 0, z: 0 };
-      
-      console.log('DataProcessor reset');
-    }
-  }
-  
-  // Export as a singleton instance
-  export default new DataProcessor();
+
+// Export as a singleton instance
+export default new DataProcessor();
