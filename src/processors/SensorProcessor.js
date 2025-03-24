@@ -49,53 +49,56 @@ const SensorProcessor = {
   },
   
   // Process accelerometer data
-  processAccelerometerData: function(rawData) {
-    if (!rawData) return rawData;
+  // Update the processAccelerometerData function in SensorProcessor.js
+processAccelerometerData: function(rawData) {
+  if (!rawData) return rawData;
+  
+  try {
+    // Copy the rawData to avoid modifying the original
+    let data = { ...rawData, timestamp: rawData.timestamp || Date.now() };
     
-    try {
-      // Ensure timestamp
-      const timestampedData = {
-        ...rawData,
-        timestamp: rawData.timestamp || Date.now()
-      };
-      
-      // Step 1: Always apply transformation if calibrated
-      let transformedData;
-      if (this.config.useCalibration && CoordinateTransformer.calibrated) {
-        transformedData = CoordinateTransformer.applyTransformation(timestampedData);
-      } else {
-        transformedData = {
-          raw: timestampedData,
-          transformed: timestampedData
-        };
-      }
-      
-      // Step 2: Apply filtering if enabled (for processed mode)
-      let filteredData = null;
-      if (this.config.useFiltering) {
-        filteredData = this.applyFiltering(transformedData);
-      }
-      
-      // Return both transformed and filtered data
-      return {
-        // Raw data (original)
-        raw: rawData,
-        
-        // Transformed data (with calibration applied)
-        transformed: transformedData.transformed,
-        
-        // Filtered data (with calibration and filtering)
-        filtered: filteredData ? filteredData.filtered : null
-      };
-    } catch (error) {
-      console.error('Error processing accelerometer data:', error);
-      return {
-        raw: rawData,
-        error: true,
-        errorMessage: error.message
-      };
+    // STEP 1: Always apply calibration transformation if available
+    // This happens regardless of "Raw" or "Processed" mode
+    let transformResult = { raw: data, transformed: data };
+    if (this.config.useCalibration && CoordinateTransformer.calibrated) {
+      transformResult = CoordinateTransformer.applyTransformation(data);
     }
-  },
+    
+    // Get the transformed data (either calibrated or uncalibrated)
+    const transformedData = transformResult.transformed;
+    
+    // STEP 2: Apply filtering if enabled
+    let filteredData = null;
+    if (this.config.useFiltering) {
+      // Apply filtering to the transformed data
+      filteredData = this.applyFiltering(transformedData);
+    }
+    
+    // Return data with all processing steps
+    return {
+      // Original raw data (pre-calibration)
+      raw: rawData,
+      
+      // After transformation (calibrated but unfiltered)
+      transformed: transformedData,
+      
+      // After filtering (calibrated and filtered)
+      filtered: filteredData,
+
+      // Add these properties directly at the root level for convenience
+      lateral: filteredData ? filteredData.x : transformedData.x,
+      longitudinal: filteredData ? filteredData.y : transformedData.y,
+      vertical: filteredData ? filteredData.z : transformedData.z
+    };
+  } catch (error) {
+    console.error('Error processing accelerometer data:', error);
+    return {
+      raw: rawData,
+      error: true,
+      errorMessage: error.message
+    };
+  }
+}
   
   // Apply filtering to transformed data
   applyFiltering: function(transformedData) {

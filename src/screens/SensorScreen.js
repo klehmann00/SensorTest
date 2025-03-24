@@ -189,6 +189,7 @@ const SensorScreen = () => {
   
   // Handle accelerometer data
   // Handle accelerometer data
+// Update the handleAccelerometerData function in SensorScreen.js
 const handleAccelerometerData = (rawData) => {
   try {
     // Handle calibration mode
@@ -198,14 +199,25 @@ const handleAccelerometerData = (rawData) => {
       return;
     }
     
-    // Process raw data through our pipeline
+    // Always process raw data through our pipeline
     const processedData = SensorProcessor.processAccelerometerData(rawData);
     
     // Update UI with appropriate data
-    setAccelData(rawData); // Always store original raw data
+    setAccelData(rawData); // Store original raw data
     setProcessedAccelData(processedData); // Store all processed stages
     
-    // Rest of the function remains the same...
+    // Store data if recording
+    if (recordingRef.current && sessionIdRef.current) {
+      const userId = AuthManager.getCurrentUserId();
+      if (userId) {
+        // Always store the fully processed data when recording
+        CloudStorage.queueData(userId, sessionIdRef.current, 'accelerometer', processedData);
+        
+        // Update data point count
+        dataPointCountRef.current += 1;
+        setDataPointCount(dataPointCountRef.current);
+      }
+    }
   } catch (error) {
     console.error("Error processing accelerometer data:", error);
   }
@@ -539,14 +551,12 @@ const handleAccelerometerData = (rawData) => {
         </Text>
         
         {/* Main visualization */}
-        // Find the GGPlot component in SensorScreen.js and replace it with this:
-
-         <GGPlot 
-            processedData={showProcessed ? processedAccelData : accelData}
-            maxG={1} 
-            isCalibrating={isCalibrating}
-            showProcessed={showProcessed}
-          />
+        <GGPlot 
+          processedData={showProcessed ? processedAccelData : processedAccelData?.transformed || accelData}
+          maxG={1} 
+          isCalibrating={isCalibrating}
+          showProcessed={showProcessed}
+        />
 
         
         {/* Calibration overlay */}

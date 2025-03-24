@@ -11,7 +11,6 @@ export default function GGPlot({
   isCalibrating = false,
   showProcessed = true
 }) {
-  console.log("GGPlot received:", processedData);
 
   const [speed, setSpeed] = useState(0);
   const [heading, setHeading] = useState(0);
@@ -95,29 +94,18 @@ export default function GGPlot({
 
   // UPDATED: Look for the right properties based on the shape of the processedData object
   // Check if the data is coming in its transformed form or the original form
-  const lateralValue = showProcessed 
-    ? (processedData?.lateral || processedData?.processed_lateral || processedData?.filtered_y || 0)
-    : (processedData?.processed_lateral || processedData?.filtered_y || processedData?.y || 0);
+// UPDATED: Always prefer transformed data in both modes, but with different fallbacks
+const lateralValue = showProcessed 
+  ? (processedData?.lateral || processedData?.processed_lateral || processedData?.filtered_y || 0)
+  : (processedData?.transformed?.x || processedData?.x || 0);
     
-  const longitudinalValue = showProcessed
-    ? (processedData?.longitudinal || processedData?.processed_longitudinal || processedData?.filtered_x || 0)
-    : (processedData?.processed_longitudinal || processedData?.filtered_x || processedData?.x || 0);
+const longitudinalValue = showProcessed
+  ? -1 * (processedData?.longitudinal || processedData?.processed_longitudinal || processedData?.filtered_x || 0)
+  : -1 * (processedData?.transformed?.y || processedData?.y || 0);
     
-  const verticalValue = showProcessed
-    ? (processedData?.vertical || processedData?.processed_vertical || processedData?.filtered_z || 0)
-    : (processedData?.processed_vertical || processedData?.filtered_z || processedData?.z || 0);
-  
-  console.log("Main display values:", {
-    lateralValue,
-    longitudinalValue,
-    verticalValue,
-    dataShape: {
-      hasLateral: !!processedData?.lateral,
-      hasProcessedLateral: !!processedData?.processed_lateral,
-      hasFilteredY: !!processedData?.filtered_y
-    }
-  });
-
+const verticalValue = showProcessed
+  ? (processedData?.vertical || processedData?.processed_vertical || processedData?.filtered_z || 0)
+  : (processedData?.transformed?.z || processedData?.z || 0);
   // Calculate point coordinates
   const currentPoint = {
     x: gToPixel(lateralValue, true),
@@ -229,11 +217,7 @@ export default function GGPlot({
           fontSize="12"
           textAnchor="start"
         >
-          {console.log("DISPLAY_Z:", {
-            rawValue: verticalValue,
-            displayWithoutOffset: verticalValue.toFixed(2),
-            currentDisplayWithOffset: (verticalValue + 1.0).toFixed(2)
-          })}
+          
           {verticalValue.toFixed(2)} G
         </SvgText>
 

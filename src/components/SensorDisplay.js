@@ -23,55 +23,42 @@ const SensorDisplay = ({ title, data, color, scale = 1, showProcessed = true }) 
   }
   
   // Determine which values to display based on data structure and showProcessed flag
-  let displayValues = {
-    x: 0, y: 0, z: 0
+  
+  // Update the displayValues determination in SensorDisplay.js
+let displayValues = {
+  x: 0, y: 0, z: 0
+};
+
+// Handle various data structures
+if (data.filtered && showProcessed) {
+  // Show filtered data when in Processed mode
+  displayValues = {
+    x: data.filtered.x || 0,
+    y: data.filtered.y || 0,
+    z: data.filtered.z || 0
   };
-  
-  // Handle various data structures
-  if (data.processed && showProcessed) {
-    // New data structure with processed values
-    displayValues = {
-      x: data.processed.x || 0,
-      y: data.processed.y || 0,
-      z: data.processed.z || 0
-    };
-  } else if (data.transformed && showProcessed) {
-    // New data structure with transformed values
-    displayValues = {
-      x: data.transformed.x || 0,
-      y: data.transformed.y || 0,
-      z: data.transformed.z || 0
-    };
-  } else if (data.raw) {
-    // New data structure with raw values
-    displayValues = {
-      x: data.raw.x || 0,
-      y: data.raw.y || 0,
-      z: data.raw.z || 0
-    };
-  } else if (data.filtered_x !== undefined && showProcessed) {
-    // Legacy format with filtered values
-    displayValues = {
-      x: data.filtered_x,
-      y: data.filtered_y,
-      z: data.filtered_z
-    };
-  } else if (data.lateral !== undefined && showProcessed) {
-    // Legacy format with lateral/longitudinal values
-    displayValues = {
-      x: data.lateral,
-      y: data.longitudinal,
-      z: data.vertical
-    };
-  } else {
-    // Simple x,y,z format
-    displayValues = {
-      x: data.x || 0,
-      y: data.y || 0,
-      z: data.z || 0
-    };
-  }
-  
+} else if (data.transformed) {
+  // Show transformed (calibrated) data when in Raw mode
+  displayValues = {
+    x: data.transformed.x || 0,
+    y: data.transformed.y || 0,
+    z: data.transformed.z || 0
+  };
+} else if (data.raw) {
+  // Fallback to raw data if no processed data available
+  displayValues = {
+    x: data.raw.x || 0,
+    y: data.raw.y || 0,
+    z: data.raw.z || 0
+  };
+} else {
+  // Simple x,y,z format as final fallback
+  displayValues = {
+    x: data.x || 0,
+    y: data.y || 0,
+    z: data.z || 0
+  };
+}
   // Helper function to get bar width for visualization
   const getBarWidth = (value, scale = 1) => {
     const maxWidth = 300;
