@@ -49,11 +49,12 @@ export default function GGPlot({
         locationSubscription = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.BestForNavigation,
-            timeInterval: 1000,
+            timeInterval: 500,
             distanceInterval: 1,
           },
           (location) => {
-            setSpeed(location.coords.speed || 0);
+        
+            setSpeed(Math.max(0, location.coords.speed || 0));
             setHeading(location.coords.heading || 0);
           }
         );
@@ -180,46 +181,7 @@ const verticalValue = showProcessed
           Brake
         </SvgText>
 
-        {/* Speed Display */}
-        <SvgText
-          x={padding + 10}
-          y={padding + 20}
-          fill="white"
-          fontSize="12"
-          textAnchor="start"
-        >
-          Speed:
-        </SvgText>
-        <SvgText
-          x={padding + 10}
-          y={padding + 35}
-          fill="#FF6B6B"
-          fontSize="12"
-          textAnchor="start"
-        >
-          {(speed * 3.6).toFixed(1)} km/h
-        </SvgText>
-        
-        {/* Vertical G numerical display */}
-        <SvgText
-          x={padding + 10}
-          y={padding + 65}
-          fill="white"
-          fontSize="12"
-          textAnchor="start"
-        >
-          Vertical G:
-        </SvgText>
-        <SvgText
-          x={padding + 10}
-          y={padding + 80}
-          fill="#FF6B6B"
-          fontSize="12"
-          textAnchor="start"
-        >
-          
-          {verticalValue.toFixed(2)} G
-        </SvgText>
+       
 
         {/* Vertical G axis with point */}
         <Line 
@@ -408,6 +370,21 @@ const verticalValue = showProcessed
 
   return (
     <View style={styles.container}>
+      {/* Add Speed display outside SVG */}
+     {/* Inline Speed display without box */}
+<View style={styles.speedContainer}>
+  <View style={styles.speedInlineContainer}>
+    <Text style={styles.speedLabel}>Speed: </Text>
+    <Text style={styles.speedValue}>{(speed * 3.6).toFixed(1)} km/h</Text>
+  </View>
+</View>
+      
+      {/* Add Vertical G display outside SVG */}
+      <View style={styles.verticalGContainer}>
+        { /*<Text style={styles.verticalGLabel}>Vertical G</Text>} */}
+        <Text style={styles.verticalGValue}>{verticalValue.toFixed(2)} G</Text>
+        </View>
+      
       <Svg width={width} height={height}>
         {/* Draw traction circle first so it's behind everything else */}
         {renderTractionCircle()}
@@ -450,6 +427,7 @@ const verticalValue = showProcessed
   );
 }
 
+
 const styles = StyleSheet.create({
   container: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
@@ -460,5 +438,44 @@ const styles = StyleSheet.create({
     borderColor: 'white',
     width: '100%',
     alignItems: 'center',
+  },
+  speedContainer: {
+    position: 'absolute',
+    top: 345, // Adjust position as needed
+    left: 100,
+    zIndex: 10,
+  },
+  speedInlineContainer: {
+    flexDirection: 'row', // Makes elements display in a row
+    alignItems: 'center', // Vertically centers the text
+  },
+  speedLabel: {
+    color: 'white',
+    fontSize: 14,
+  },
+  speedValue: {
+    color: '#FF6B6B',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  verticalGContainer: {
+    position: 'absolute',
+    top: 0,
+    right: 10,
+    // backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 10,
+    padding: 8,
+    zIndex: 10,
+  },
+  verticalGLabel: {
+    color: 'white',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  verticalGValue: {
+    color: '#4ECDC4',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
   }
 });

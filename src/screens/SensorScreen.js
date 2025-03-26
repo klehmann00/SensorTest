@@ -17,7 +17,7 @@ import { useAdmin } from '../contexts/AdminContext';
 
 // Import managers and processors
 import SensorDataManager from '../managers/SensorDataManager';
-import SensorProcessor from '../processors/SensorProcessor 2nd copy';
+import SensorProcessor from '../processors/SensorProcessor';
 import CalibrationSystem from '../managers/CalibrationSystem';
 import EnergyManager from '../managers/EnergyManager';
 import CloudStorage from '../managers/CloudStorage';
@@ -27,6 +27,7 @@ import AuthManager from '../services/AuthManager';
 import SensorDisplay from '../components/SensorDisplay';
 import GGPlot from '../components/GGPlot';
 import DebugPanel from '../components/DebugPanel';
+import GyroVisualizer from '../components/GyroVisualizer';
 
 const SensorScreen = () => {
   const { isAdmin } = useAdmin();
@@ -77,16 +78,31 @@ const SensorScreen = () => {
         setIsCalibrated(calibrationLoaded);
         updateCalibrationInfo();
         
-        // Initialize sensor processor with default config
+        // Filter and Limiter definitions
         SensorProcessor.initialize({
           processing: {
-            maxDelta: { x: 0.025, y: 0.025, z: 0.05 },
-            filter: { x: 0.1, y: 0.1, z: 0.2 }
+            maxDelta: { 
+              x: 0.025,  // For accelerometer
+              y: 0.025,  // For accelerometer
+              z: 0.05,   // For accelerometer
+              gyroX: 0.3, // For gyroscope (rad/s) - add these new properties
+              gyroY: 0.3, // For gyroscope (rad/s)
+              gyroZ: 0.3  // For gyroscope (rad/s)
+            },
+            filter: { 
+              x: 0.1,    // For accelerometer
+              y: 0.1,    // For accelerometer
+              z: 0.2,    // For accelerometer
+              gyroX: 0.9, // For gyroscope - add these new properties
+              gyroY: 0.01, // For gyroscope
+              gyroZ: 0.1  // For gyroscope
+            }
           },
           useFiltering: true,
           useCalibration: true,
           debugMode: false
         });
+       
         
         // Subscribe to AppState changes
         const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
@@ -205,7 +221,13 @@ const handleAccelerometerData = (rawData) => {
     // Update UI with appropriate data
     setAccelData(rawData); // Store original raw data
     setProcessedAccelData(processedData); // Store all processed stages
-    
+
+    // Add after setProcessedAccelData(processedData);
+    console.log("Accel data:", 
+      showProcessed ? "PROCESSED MODE" : "RAW MODE", 
+      processedData?.filtered ? "HAS filtered" : "NO filtered"
+    );
+
     // Store data if recording
     if (recordingRef.current && sessionIdRef.current) {
       const userId = AuthManager.getCurrentUserId();
@@ -488,15 +510,17 @@ const handleAccelerometerData = (rawData) => {
     );
   };
   
-  // Toggle processed data display
-  const toggleDataProcessing = () => {
-    setShowProcessed(!showProcessed);
-  };
-  
-  // Toggle debug panel
-  const toggleDebugPanel = () => {
-    setShowDebugPanel(!showDebugPanel);
-  };
+// Toggle processed data display
+const toggleDataProcessing = () => {
+  const newMode = !showProcessed;
+  setShowProcessed(newMode);
+  SensorProcessor.setFiltering(newMode);
+};
+
+// Toggle debug panel
+const toggleDebugPanel = () => {
+  setShowDebugPanel(!showDebugPanel);
+};
   
   // Logout handler
   const handleLogout = async () => {
@@ -558,6 +582,14 @@ const handleAccelerometerData = (rawData) => {
           showProcessed={showProcessed}
         />
 
+        {/* Gyro visualizer */}
+        <View style={styles.gyroVisualizerContainer}>
+          <GyroVisualizer 
+            data={gyroData} 
+            size={150}
+            showProcessed={showProcessed}
+          />
+        </View>
         
         {/* Calibration overlay */}
         {isCalibrating && (
@@ -661,7 +693,14 @@ const handleAccelerometerData = (rawData) => {
           scale={2} 
           showProcessed={showProcessed} 
         />
-        
+        <View style={styles.gyroVisualizerContainer}>
+          <Text style={styles.sectionTitle}>Rotation Rates</Text>
+           <GyroVisualizer 
+            data={gyroData} 
+            size={150}
+          />
+        </View>
+
         <SensorDisplay 
           title="Magnetometer (μT)" 
           data={magData} 
@@ -798,6 +837,17 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  gyroVisualizerContainer: {
+    backgroundColor: 'rgba(78, 205, 196, 0.1)', // Match GGPlot's styling
+    borderRadius: 15,
+    padding: 10,
+    marginTop: -5, // Move it closer to GGPlot by using negative margin
+    marginBottom: 15,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)', // Subtle border
+    width: '100%', // Match GGPlot width
   },
 });
 
