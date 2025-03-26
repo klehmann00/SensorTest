@@ -195,7 +195,7 @@ const verticalValue = showProcessed
 
         <Circle
           cx={width - padding - 20}
-          cy={centerY - ((verticalValue + 1.0) * (height - 2 * padding) / (2 * maxVerticalG))}
+          cy={padding + ((1 - verticalValue) / 2) * (height - 2 * padding)}
           r="4"
           fill="#FF6B6B"
         />

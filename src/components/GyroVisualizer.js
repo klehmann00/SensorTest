@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import Svg, { Circle, Line, Text } from 'react-native-svg';
+import PropTypes from 'prop-types';
 
 /**
  * Simple visualizer for gyroscope data showing rotation rates
@@ -150,5 +151,17 @@ const styles = StyleSheet.create({
     margin: 5,
   }
 });
+
+GyroVisualizer.propTypes = {
+  data: PropTypes.object,
+  size: PropTypes.number,
+  showProcessed: PropTypes.bool
+};
+
+GyroVisualizer.defaultProps = {
+  data: {},
+  size: 120,
+  showProcessed: true
+};
 
 export default GyroVisualizer;

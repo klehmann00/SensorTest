@@ -222,12 +222,6 @@ const handleAccelerometerData = (rawData) => {
     setAccelData(rawData); // Store original raw data
     setProcessedAccelData(processedData); // Store all processed stages
 
-    // Add after setProcessedAccelData(processedData);
-    console.log("Accel data:", 
-      showProcessed ? "PROCESSED MODE" : "RAW MODE", 
-      processedData?.filtered ? "HAS filtered" : "NO filtered"
-    );
-
     // Store data if recording
     if (recordingRef.current && sessionIdRef.current) {
       const userId = AuthManager.getCurrentUserId();

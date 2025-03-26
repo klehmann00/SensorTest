@@ -10,23 +10,39 @@ const SensorProcessor = {
     debugMode: false,
     processing: {
       maxDelta: { x: 0.025, y: 0.025, z: 0.05 },
-      filter: { x: 0.1, y: 0.1, z: 0.2 }
+      filter: { x: 0.05, y: 0.05, z: 0.05 }, // Reduced alpha values for accelerometer
+      // Gyroscope-specific settings
+      gyro: {
+        maxDelta: { x: 0.2, y: 0.2, z: 0.2 },
+        filter: { x: 0.1, y: 0.1, z: 0.1 }
+      }
     }
   },
   
-  // Previous values for filtering
-  prevValues: { x: 0, y: 0, z: 0 },
-  prevFiltered: { x: 0, y: 0, z: 0 },
+  // Separate state variables for each sensor type
+  accelPrevValues: { x: 0, y: 0, z: 0 },
+  accelPrevFiltered: { x: 0, y: 0, z: 0 },
+  gyroPrevValues: { x: 0, y: 0, z: 0 },
+  gyroPrevFiltered: { x: 0, y: 0, z: 0 },
   
   // Initialize with configuration
   initialize: function(config = {}) {
     console.log('SensorProcessor initializing with config:', config);
+    
     // Merge provided configuration with defaults
     if (config.processing) {
       this.config.processing = {
         ...this.config.processing,
         ...config.processing
       };
+      
+      // Handle nested gyro settings if provided
+      if (config.processing.gyro) {
+        this.config.processing.gyro = {
+          ...this.config.processing.gyro,
+          ...config.processing.gyro
+        };
+      }
     }
     
     if (typeof config.useFiltering === 'boolean') {
@@ -48,166 +64,160 @@ const SensorProcessor = {
     return true;
   },
   
-  // ************** PROCESS ACCEL (filtering) *************************************
-  // Update the processAccelerometerData function in SensorProcessor.js
-processAccelerometerData: function(rawData) {
-  if (!rawData) return rawData;
-  
-  try {
-    let data = { ...rawData, timestamp: rawData.timestamp || Date.now() };
-    let transformResult = { raw: data, transformed: data };
-    if (this.config.useCalibration && CoordinateTransformer.calibrated) {
-      transformResult = CoordinateTransformer.applyTransformation(data);
-    }
-    
-    // Get the transformed data (either calibrated or uncalibrated)
-    const transformedData = transformResult.transformed;
-    
-    // STEP 2: Apply filtering if enabled
-    let filteredData = null;
-    if (this.config.useFiltering) {
-      // Apply filtering to the transformed data
-      filteredData = this.applyFiltering(transformedData);
-    }
-    
-    // Return data with all processing steps
-    return {
-      // Original raw data (pre-calibration)
-      raw: rawData,
-      transformed: transformedData,
-      filtered: filteredData,
-      processed: filteredData || transformedData,
-      lateral: filteredData ? filteredData.x : transformedData.x,
-      longitudinal: filteredData ? filteredData.y : transformedData.y,
-      vertical: filteredData ? filteredData.z : transformedData.z
-    };
-  } catch (error) {
-    console.error('Error processing accelerometer data:', error);
-    return {
-      raw: rawData,
-      error: true,
-      errorMessage: error.message
-    };
-  }
-},
- 
-  // ACCEL
-
-  // Apply filtering to transformed data
-  applyFiltering: function(transformedData) {
-    // Remove this line - transformedData is already the transformed data
-    // const transformed = transformedData.transformed;
-    
-    // Replace with this simple check
-    if (!transformedData) return null;
+  // Process accelerometer data
+  processAccelerometerData: function(rawData) {
+    if (!rawData) return rawData;
     
     try {
-      // Apply low-pass filtering directly to transformedData
-      const filtered = {
-        x: this.lowPassFilter(transformedData.x, this.prevFiltered.x, this.config.processing.filter.x),
-        y: this.lowPassFilter(transformedData.y, this.prevFiltered.y, this.config.processing.filter.y),
-        z: this.lowPassFilter(transformedData.z, this.prevFiltered.z, this.config.processing.filter.z),
+      // Add timestamp if missing
+      let data = { ...rawData, timestamp: rawData.timestamp || Date.now() };
+      let transformResult = { raw: data, transformed: data };
+      
+      // Apply calibration if enabled and available
+      if (this.config.useCalibration && CoordinateTransformer.calibrated) {
+        transformResult = CoordinateTransformer.applyTransformation(data);
+      }
+      
+      // Get the transformed data (either calibrated or uncalibrated)
+      const transformedData = transformResult.transformed;
+      
+      // Apply rate limiting to prevent large jumps
+      const limited = {
+        x: this.limitRateOfChange(transformedData.x, this.accelPrevValues.x, this.config.processing.maxDelta.x),
+        y: this.limitRateOfChange(transformedData.y, this.accelPrevValues.y, this.config.processing.maxDelta.y),
+        z: this.limitRateOfChange(transformedData.z, this.accelPrevValues.z, this.config.processing.maxDelta.z),
         timestamp: transformedData.timestamp
       };
       
-      // Update previous values
-      this.prevFiltered = { ...filtered };
+      // Update accelerometer-specific previous values
+      this.accelPrevValues = { ...limited };
       
-      // Return just the filtered data, not wrapped in an object
-      return filtered;
-    } catch (error) {
-      console.error('Error in filtering:', error);
-      return null;
-    }
-  },
-  
-    // Apply RATE LIMITING ACCEL to prevent large jumps in values
-    limitRateOfChange: function(newValue, oldValue, maxDelta) {
-      const delta = newValue - oldValue;
-      
-      if (delta > maxDelta) {
-        return oldValue + maxDelta;
-      } else if (delta < -maxDelta) {
-        return oldValue - maxDelta;
-      } else {
-        return newValue;
+      // Apply filtering if enabled
+      let filteredData = null;
+      if (this.config.useFiltering) {
+        filteredData = {
+          x: this.lowPassFilter(limited.x, this.accelPrevFiltered.x, this.config.processing.filter.x),
+          y: this.lowPassFilter(limited.y, this.accelPrevFiltered.y, this.config.processing.filter.y),
+          z: this.lowPassFilter(limited.z, this.accelPrevFiltered.z, this.config.processing.filter.z),
+          timestamp: limited.timestamp
+        };
+        
+        // Update accelerometer-specific filtered values
+        this.accelPrevFiltered = { ...filteredData };
       }
-    },
-  
-    
-  // LOW PASS FILTER ACCEL implementation
-  lowPassFilter: function(newValue, oldValue, alpha) {
-    if (isNaN(newValue) || isNaN(oldValue)) return newValue;
-    return alpha * newValue + (1 - alpha) * oldValue;
+      
+      // Return data with consistent structure
+      return {
+        raw: transformResult.raw,
+        transformed: transformedData,
+        limited: limited,
+        filtered: filteredData,
+        processed: filteredData || limited || transformedData,
+        // Domain-specific names for acceleration
+        lateral: filteredData ? filteredData.y : (limited ? limited.y : transformedData.y),
+        longitudinal: filteredData ? filteredData.x : (limited ? limited.x : transformedData.x),
+        vertical: filteredData ? filteredData.z : (limited ? limited.z : transformedData.z),
+        // For debugging
+        timestamp: data.timestamp
+      };
+    } catch (error) {
+      console.error('Error processing accelerometer data:', error);
+      return {
+        raw: rawData,
+        error: true,
+        errorMessage: error.message
+      };
+    }
   },
   
-  
-  // PROCESS GYRO (filtering, limiting)
-
+  // Process gyroscope data
   processGyroscopeData: function(rawData) {
-  if (!rawData) return rawData;
-  
-  try {
-    let data = { ...rawData, timestamp: rawData.timestamp || Date.now() };
+    if (!rawData) return rawData;
     
-    let transformResult = { raw: data, transformed: data };
-    if (this.config.useCalibration && CoordinateTransformer.calibrated) {
-      transformResult.transformed = data;
-    }
-    
-    const transformedData = transformResult.transformed;
-    
-    // STEP 2: Apply RATE LIMITING GYRO  to prevent large jumps
-
-    const limited = {
-      x: this.limitRateOfChange(transformedData.x, this.prevValues.x, this.config.processing.maxDelta.x),
-      y: this.limitRateOfChange(transformedData.y, this.prevValues.y, this.config.processing.maxDelta.y),
-      z: this.limitRateOfChange(transformedData.z, this.prevValues.z, this.config.processing.maxDelta.z),
-      timestamp: transformedData.timestamp
-    };
-    
-    // Update previous values for next iteration
-    this.prevValues = { 
-      x: limited.x,
-      y: limited.y,
-      z: limited.z
-    };
-    
-    // STEP 3: Apply FILTERING GYRO  if enabled
-    let filteredData = null;
-    if (this.config.useFiltering) {
-      // Apply filtering to the rate-limited data
-      filteredData = {
-        x: this.lowPassFilter(limited.x, this.prevFiltered.x, this.config.processing.filter.x),
-        y: this.lowPassFilter(limited.y, this.prevFiltered.y, this.config.processing.filter.y),
-        z: this.lowPassFilter(limited.z, this.prevFiltered.z, this.config.processing.filter.z),
-        timestamp: limited.timestamp
+    try {
+      // Add timestamp if missing
+      let data = { ...rawData, timestamp: rawData.timestamp || Date.now() };
+      
+      // For consistency, we create a transformed object even if not applying calibration
+      // This ensures consistent structure with accelerometer data
+      let transformedData = { ...data };
+      
+      // Get gyro-specific settings or fall back to defaults
+      const gyroMaxDelta = this.config.processing.gyro?.maxDelta || {
+        x: 0.2, y: 0.2, z: 0.2
       };
       
-      // Update previous filtered values for next iteration
-      this.prevFiltered = { ...filteredData };
+      const gyroFilter = this.config.processing.gyro?.filter || {
+        x: 0.1, y: 0.1, z: 0.1
+      };
+      
+      // Apply rate limiting to prevent large jumps
+      const limited = {
+        x: this.limitRateOfChange(transformedData.x, this.gyroPrevValues.x, gyroMaxDelta.x),
+        y: this.limitRateOfChange(transformedData.y, this.gyroPrevValues.y, gyroMaxDelta.y),
+        z: this.limitRateOfChange(transformedData.z, this.gyroPrevValues.z, gyroMaxDelta.z),
+        timestamp: transformedData.timestamp
+      };
+      
+      // Update gyroscope-specific previous values
+      this.gyroPrevValues = { ...limited };
+      
+      // Apply filtering if enabled
+      let filteredData = null;
+      if (this.config.useFiltering) {
+        filteredData = {
+          x: this.lowPassFilter(limited.x, this.gyroPrevFiltered.x, gyroFilter.x),
+          y: this.lowPassFilter(limited.y, this.gyroPrevFiltered.y, gyroFilter.y),
+          z: this.lowPassFilter(limited.z, this.gyroPrevFiltered.z, gyroFilter.z),
+          timestamp: limited.timestamp
+        };
+        
+        // Update gyroscope-specific filtered values
+        this.gyroPrevFiltered = { ...filteredData };
+      }
+      
+      // Return data with consistent structure matching accelerometer
+      return {
+        raw: data,
+        transformed: transformedData,
+        limited: limited,
+        filtered: filteredData,
+        processed: filteredData || limited || transformedData,
+        // Domain-specific names for rotation rates
+        roll: filteredData ? filteredData.x : (limited ? limited.x : transformedData.x),
+        pitch: filteredData ? filteredData.y : (limited ? limited.y : transformedData.y),
+        yaw: filteredData ? filteredData.z : (limited ? limited.z : transformedData.z),
+        // For debugging
+        timestamp: data.timestamp
+      };
+    } catch (error) {
+      console.error('Error processing gyroscope data:', error);
+      return {
+        raw: rawData,
+        error: true,
+        errorMessage: error.message
+      };
     }
+  },
+  
+  // Apply RATE LIMITING to prevent large jumps in values
+  limitRateOfChange: function(newValue, oldValue, maxDelta) {
+    const delta = newValue - oldValue;
     
-    // Return data with all processing steps
-    return {
-      raw: data,
-      transformed: transformedData,
-      limited: limited,
-      filtered: filteredData,
-      processed: filteredData || limited || transformedData,
-      rotationX: filteredData ? filteredData.x : limited.x, // Roll rate
-      rotationY: filteredData ? filteredData.y : limited.y, // Pitch rate
-      rotationZ: filteredData ? filteredData.z : limited.z  // Yaw rate
-    };
-  } catch (error) {
-    console.error('Error processing gyroscope data:', error);
-    return {
-      raw: rawData,
-      error: true,
-      errorMessage: error.message
-    };
-  }
-},
+    if (delta > maxDelta) {
+      return oldValue + maxDelta;
+    } else if (delta < -maxDelta) {
+      return oldValue - maxDelta;
+    } else {
+      return newValue;
+    }
+  },
+  
+  // LOW PASS FILTER implementation
+  lowPassFilter: function(newValue, oldValue, alpha) {
+    if (isNaN(newValue) || isNaN(oldValue)) return newValue;
+    return ((newValue - oldValue) * alpha) + oldValue;
+  },
   
   // Toggle filtering
   setFiltering: function(enabled) {
@@ -231,6 +241,14 @@ processAccelerometerData: function(rawData) {
         ...this.config.processing,
         ...config.processing
       };
+      
+      // Update gyro-specific settings if provided
+      if (config.processing.gyro) {
+        this.config.processing.gyro = {
+          ...this.config.processing.gyro,
+          ...config.processing.gyro
+        };
+      }
     }
     
     // Update flags
@@ -252,8 +270,11 @@ processAccelerometerData: function(rawData) {
   
   // Reset processor state
   reset: function() {
-    this.prevValues = { x: 0, y: 0, z: 0 };
-    this.prevFiltered = { x: 0, y: 0, z: 0 };
+    // Reset both accelerometer and gyroscope state variables
+    this.accelPrevValues = { x: 0, y: 0, z: 0 };
+    this.accelPrevFiltered = { x: 0, y: 0, z: 0 };
+    this.gyroPrevValues = { x: 0, y: 0, z: 0 };
+    this.gyroPrevFiltered = { x: 0, y: 0, z: 0 };
     console.log('SensorProcessor reset');
     return this;
   }

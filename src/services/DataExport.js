@@ -21,16 +21,19 @@ export const exportSessionData = async (userId, sessionId) => {
     
     // Log data availability
     if (sessionData.accelerometer) {
+      console.log('Found accelerometer data');
     } else {
       console.log('No accelerometer data found');
     }
     
     if (sessionData.gyroscope) {
+      console.log('Found gyroscope data');
     } else {
       console.log('No gyroscope data found');
     }
     
     if (sessionData.magnetometer) {
+      console.log('Found magnetomoeter data');
     } else {
       console.log('No magnetometer data found');
     }
