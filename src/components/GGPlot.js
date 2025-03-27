@@ -1,7 +1,8 @@
-// src/components/GGPlot.js (Enhanced Version)
+// src/components/GGPlot.js
+
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Dimensions, Text } from 'react-native';
-import Svg, { Circle, Line, Text as SvgText, Rect, Ellipse, Path } from 'react-native-svg';
+import Svg, { Circle, Line, Text as SvgText, Rect, Path } from 'react-native-svg';
 import * as Location from 'expo-location';
 import VehicleDynamics from '../utils/VehicleDynamics';
 import ConfigurationManager from '../managers/ConfigurationManager';
@@ -93,20 +94,25 @@ export default function GGPlot({
     return padding + (scale / 2) + (g * scale / (2 * maxG));
   };
 
-  // UPDATED: Look for the right properties based on the shape of the processedData object
-  // Check if the data is coming in its transformed form or the original form
-// UPDATED: Always prefer transformed data in both modes, but with different fallbacks
-const lateralValue = showProcessed 
-  ? (processedData?.lateral || processedData?.processed_lateral || processedData?.filtered_y || 0)
-  : (processedData?.transformed?.x || processedData?.x || 0);
-    
-const longitudinalValue = showProcessed
-  ? -1 * (processedData?.longitudinal || processedData?.processed_longitudinal || processedData?.filtered_x || 0)
-  : -1 * (processedData?.transformed?.y || processedData?.y || 0);
-    
-const verticalValue = showProcessed
-  ? (processedData?.vertical || processedData?.processed_vertical || processedData?.filtered_z || 0)
-  : (processedData?.transformed?.z || processedData?.z || 0);
+  // CONSISTENT MAPPING: Always use the same coordinate system regardless of mode
+  // - Y-axis is lateral movement (side-to-side)
+  // - X-axis is longitudinal movement (forward/backward)
+  // - Z-axis is vertical movement (up/down)
+  
+  // For raw data, use y for lateral and x for longitudinal
+  // For processed data, use lateral and longitudinal properties directly
+  const lateralValue = showProcessed 
+    ? (processedData?.lateral || 0)
+    : (processedData?.x || 0);  // Y-axis is lateral in both modes
+      
+  const longitudinalValue = showProcessed
+    ? -1 * (processedData?.longitudinal || 0)  // Negate for display orientation
+    : -1 * (processedData?.y || 0);  // X-axis is longitudinal in both modes
+      
+  const verticalValue = showProcessed
+    ? (processedData?.vertical || 0)
+    : (processedData?.z || 0);  // Z-axis is vertical in both modes
+
   // Calculate point coordinates
   const currentPoint = {
     x: gToPixel(lateralValue, true),

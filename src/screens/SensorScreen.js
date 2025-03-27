@@ -1,3 +1,4 @@
+/* eslint-disable complexity */
 // src/screens/SensorScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -204,10 +205,12 @@ const SensorScreen = () => {
   }, []);
   
   // Handle accelerometer data
-  // Handle accelerometer data
-// Update the handleAccelerometerData function in SensorScreen.js
+
 const handleAccelerometerData = (rawData) => {
   try {
+    console.log('=== RAW ACCEL INPUT ===');
+    console.log(JSON.stringify(rawData, null, 2));
+    
     // Handle calibration mode
     if (calibratingRef.current) {
       CalibrationSystem.addCalibrationSample(rawData);
@@ -217,7 +220,10 @@ const handleAccelerometerData = (rawData) => {
     
     // Always process raw data through our pipeline
     const processedData = SensorProcessor.processAccelerometerData(rawData);
-    
+      console.log('=== PROCESSED ACCEL OUTPUT ===');
+      console.log(JSON.stringify(processedData, null, 2));
+      
+
     // Update UI with appropriate data
     setAccelData(rawData); // Store original raw data
     setProcessedAccelData(processedData); // Store all processed stages
@@ -507,6 +513,7 @@ const handleAccelerometerData = (rawData) => {
 // Toggle processed data display
 const toggleDataProcessing = () => {
   const newMode = !showProcessed;
+    console.log(`=== TOGGLING MODE: ${showProcessed ? 'Processed' : 'Raw'} -> ${newMode ? 'Processed' : 'Raw'} ===`);
   setShowProcessed(newMode);
   SensorProcessor.setFiltering(newMode);
 };
@@ -539,7 +546,11 @@ const toggleDebugPanel = () => {
       Alert.alert('Not Calibrating', 'Start calibration first.');
     }
   };
-
+  console.log('=== DATA BEING PASSED TO COMPONENTS ===');
+  console.log('showProcessed:', showProcessed);
+  console.log('GGPlot data:', JSON.stringify(showProcessed ? processedAccelData : accelData, null, 2));
+  console.log('SensorDisplay data:', JSON.stringify(showProcessed ? processedAccelData : accelData, null, 2));
+  
   return (
     <ScrollView style={styles.scrollView}>
       <View style={styles.container}>
@@ -570,7 +581,7 @@ const toggleDebugPanel = () => {
         
         {/* Main visualization */}
         <GGPlot 
-          processedData={showProcessed ? processedAccelData : processedAccelData?.transformed || accelData}
+          processedData={showProcessed ? processedAccelData : accelData}
           maxG={1} 
           isCalibrating={isCalibrating}
           showProcessed={showProcessed}
@@ -672,6 +683,7 @@ const toggleDebugPanel = () => {
         </View>
         
         {/* Sensor displays */}
+
         <SensorDisplay 
           title="Accelerometer (G)" 
           data={showProcessed ? processedAccelData : accelData} 
@@ -679,6 +691,7 @@ const toggleDebugPanel = () => {
           scale={1} 
           showProcessed={showProcessed} 
         />
+
         
         <SensorDisplay 
           title="Gyroscope (rad/s)" 

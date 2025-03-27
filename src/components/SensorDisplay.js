@@ -51,28 +51,31 @@ const SensorDisplay = ({ title, data, color, scale = 1, showProcessed = true }) 
       };
     }
   } 
-  // Special handling for accelerometer data
+  // Special handling for accelerometer data - THIS IS THE KEY CHANGE
   else if (title.toLowerCase().includes('accel')) {
-    // Use domain-specific properties if available
-    if (data.lateral !== undefined) {
-      displayValues = {
-        x: data.lateral || 0,        // Side-to-side
-        y: data.longitudinal || 0,   // Forward-backward
-        z: data.vertical || 0        // Up-down
-      };
-    }
-    // Otherwise fall back to processing stages
-    else if (data.filtered && showProcessed) {
-      displayValues = {
-        x: data.filtered.x || 0,
-        y: data.filtered.y || 0,
-        z: data.filtered.z || 0
-      };
+    if (showProcessed) {
+      // In processed mode, use vehicle dynamics properties
+      if (data.lateral !== undefined) {
+        // Use the domain-specific properties directly
+        displayValues = {
+          x: data.lateral || 0,        // Side-to-side (lateral)
+          y: data.longitudinal || 0,   // Forward-backward (longitudinal)
+          z: data.vertical || 0        // Up-down (vertical)
+        };
+      } else if (data.filtered) {
+        // If no domain properties, map filtered values to match vehicle dynamics
+        displayValues = {
+          x: data.filtered.x || 0,     
+          y: data.filtered.y || 0,     
+          z: data.filtered.z || 0      
+        };
+      }
     } else {
+      // In raw mode, map raw coordinates directly to vehicle-oriented coordinates
       displayValues = {
-        x: data.transformed?.x || data.x || 0,
-        y: data.transformed?.y || data.y || 0,
-        z: data.transformed?.z || data.z || 0
+        x: data.y || 0,              // Y-axis is lateral (side-to-side)
+        y: data.x || 0,              // X-axis is longitudinal (forward-backward)
+        z: data.z || 0               // Z-axis is vertical (up-down)
       };
     }
   }
@@ -112,10 +115,12 @@ const SensorDisplay = ({ title, data, color, scale = 1, showProcessed = true }) 
         z: 'Yaw: '
       };
     } else if (title.toLowerCase().includes('accel')) {
+      // Always use vehicle dynamics terminology for accelerometer
+      // regardless of mode - this creates consistent labeling
       return {
-        x: showProcessed ? 'Lateral: ' : 'X: ',
-        y: showProcessed ? 'Longitudinal: ' : 'Y: ', 
-        z: showProcessed ? 'Vertical: ' : 'Z: '
+        x: 'Lateral: ',      // Side-to-side
+        y: 'Longitudinal: ', // Forward-backward
+        z: 'Vertical: '      // Up-down
       };
     } else {
       return {
@@ -129,9 +134,9 @@ const SensorDisplay = ({ title, data, color, scale = 1, showProcessed = true }) 
   const axisLabels = getAxisLabels();
   
   // Helper function to get bar width for visualization
-  const getBarWidth = (value, scale = 1) => {
+  const getBarWidth = (value, barScale = 1) => {
     const maxWidth = 300;
-    const scaledWidth = Math.abs(value * scale) * maxWidth;
+    const scaledWidth = Math.abs(value * barScale) * maxWidth;
     return Math.min(scaledWidth, maxWidth);
   };
   
