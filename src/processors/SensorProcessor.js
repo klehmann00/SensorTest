@@ -73,6 +73,8 @@ const SensorProcessor = {
       let data = { ...rawData, timestamp: rawData.timestamp || Date.now() };
       let transformResult = { raw: data, transformed: data };
       
+      console.log(`[FLOW] SensorProcessor applying calibration: ${this.config.useCalibration && CoordinateTransformer.calibrated}`);
+
       // Step 2: Apply calibration if enabled and available
       if (this.config.useCalibration && CoordinateTransformer.calibrated) {
         transformResult = CoordinateTransformer.applyTransformation(data);
@@ -106,17 +108,24 @@ const SensorProcessor = {
         this.accelPrevFiltered = { ...filtered };
       }
       
-      // Step 6: Return result with domain-specific mapping
+      // Step 6: Define processed data (with final values)
+      const processed = filtered || limited || transformedData;
+      
+      // Step 7: Return result with domain-specific mapping
+      // CRITICAL - Consistent mapping for vehicle coordinates:
+      // - X sensor axis -> Lateral vehicle axis (side-to-side)
+      // - Y sensor axis -> Longitudinal vehicle axis (forward/backward)
+      // - Z sensor axis -> Vertical vehicle axis (up/down)
       return {
         raw: transformResult.raw,
         transformed: transformedData,
         limited: limited,
         filtered: filtered,
-        processed: filtered || limited || transformedData,
-        // Domain-specific names for acceleration
-        lateral: filtered ? filtered.y : (limited ? limited.y : transformedData.y),
-        longitudinal: filtered ? filtered.x : (limited ? limited.x : transformedData.x),
-        vertical: filtered ? filtered.z : (limited ? limited.z : transformedData.z),
+        processed: processed,
+        // Domain-specific names for acceleration - FIXED MAPPING
+        lateral: processed.x,          // X-axis is lateral (side-to-side)
+        longitudinal: processed.y,     // Y-axis is longitudinal (forward/backward)
+        vertical: processed.z,         // Z-axis is vertical (up/down)
         // For debugging
         timestamp: data.timestamp
       };
@@ -224,8 +233,9 @@ const SensorProcessor = {
   
   // Toggle calibration
   setCalibration: function(enabled) {
+    const previous = this.config.useCalibration;
     this.config.useCalibration = !!enabled;
-    console.log(`Calibration ${this.config.useCalibration ? 'enabled' : 'disabled'}`);
+    console.log(`[FLOW] SensorProcessor calibration: ${previous} → ${this.config.useCalibration}`);
     return this.config.useCalibration;
   },
   

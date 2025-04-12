@@ -1,5 +1,5 @@
 // src/components/SensorDisplay.js
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import PropTypes from 'prop-types';
 
@@ -23,88 +23,113 @@ const SensorDisplay = ({ title, data, color, scale = 1, showProcessed = true }) 
     );
   }
   
-  // Determine what values to display based on sensor type and data
-  let displayValues = { x: 0, y: 0, z: 0 };
-
-  // Special handling for gyroscope data
-  if (title.toLowerCase().includes('gyro')) {
-    // Use roll/pitch/yaw properties if available
-    if (data.roll !== undefined) {
-      displayValues = {
-        x: data.roll || 0,    // X-axis rotation rate (roll)
-        y: data.pitch || 0,   // Y-axis rotation rate (pitch)
-        z: data.yaw || 0      // Z-axis rotation rate (yaw)
-      };
-    } 
-    // Otherwise fall back to standard properties based on processing mode
-    else if (data.filtered && showProcessed) {
-      displayValues = {
-        x: data.filtered.x || 0,
-        y: data.filtered.y || 0,
-        z: data.filtered.z || 0
-      };
-    } else {
-      displayValues = {
-        x: data.transformed?.x || data.x || 0,
-        y: data.transformed?.y || data.y || 0,
-        z: data.transformed?.z || data.z || 0
-      };
+  // Debug logging - uncomment when debugging
+  useEffect(() => {
+    if (data && Math.random() < 0.01) {
+      console.log(`[SensorDisplay: ${title}] Mode: ${showProcessed ? 'Processed' : 'Raw'}`);
+      console.log(`[SensorDisplay: ${title}] Data:`, JSON.stringify(data, null, 2));
     }
-  } 
-  // Special handling for accelerometer data - THIS IS THE KEY CHANGE
-  else if (title.toLowerCase().includes('accel')) {
-    if (showProcessed) {
-      // In processed mode, use vehicle dynamics properties
-      if (data.lateral !== undefined) {
-        // Use the domain-specific properties directly
-        displayValues = {
+  }, [data, showProcessed, title]);
+  
+  // Extract the appropriate values based on sensor type and processing mode
+  const extractValues = () => {
+    // Special handling for gyroscope data
+    if (title.toLowerCase().includes('gyro')) {
+      // Use roll/pitch/yaw properties if available
+      if (data.roll !== undefined) {
+        return {
+          x: data.roll || 0,    // X-axis rotation rate (roll)
+          y: data.pitch || 0,   // Y-axis rotation rate (pitch)
+          z: data.yaw || 0      // Z-axis rotation rate (yaw)
+        };
+      } 
+      // Otherwise fall back to standard properties based on processing mode
+      else if (data.filtered && showProcessed) {
+        return {
+          x: data.filtered.x || 0,
+          y: data.filtered.y || 0,
+          z: data.filtered.z || 0
+        };
+      } else {
+        return {
+          x: data.transformed?.x || data.x || 0,
+          y: data.transformed?.y || data.y || 0,
+          z: data.transformed?.z || data.z || 0
+        };
+      }
+    } 
+    // Special handling for accelerometer data - CONSISTENT COORDINATE MAPPING
+    else if (title.toLowerCase().includes('accel')) {
+      if (showProcessed && data.lateral !== undefined) {
+        // In processed mode with domain properties available
+        return {
           x: data.lateral || 0,        // Side-to-side (lateral)
           y: data.longitudinal || 0,   // Forward-backward (longitudinal)
           z: data.vertical || 0        // Up-down (vertical)
         };
-      } else if (data.filtered) {
-        // If no domain properties, map filtered values to match vehicle dynamics
-        displayValues = {
-          x: data.filtered.x || 0,     
-          y: data.filtered.y || 0,     
-          z: data.filtered.z || 0      
+      } 
+      else if (showProcessed && data.filtered) {
+        // In processed mode with filtered values
+        return {
+          x: data.filtered.y || 0,     // Y-axis maps to lateral (x display)
+          y: data.filtered.x || 0,     // X-axis maps to longitudinal (y display)
+          z: data.filtered.z || 0      // Z-axis is vertical (z display)
         };
       }
+      else if (data.transformed) {
+        // In raw mode with transformed data
+        return {
+          x: data.transformed.y || 0,  // Y-axis maps to lateral (x display)
+          y: data.transformed.x || 0,  // X-axis maps to longitudinal (y display)
+          z: data.transformed.z || 0   // Z-axis is vertical (z display)
+        };
+      }
+      else {
+        // Direct raw mode
+        return {
+          x: data.y || 0,              // Y-axis maps to lateral (x display)
+          y: data.x || 0,              // X-axis maps to longitudinal (y display)
+          z: data.z || 0               // Z-axis is vertical (z display)
+        };
+      }
+    }
+    // Standard handling for other sensor types
+    else if (data.filtered && showProcessed) {
+      return {
+        x: data.filtered.x || 0,
+        y: data.filtered.y || 0,
+        z: data.filtered.z || 0
+      };
+    } else if (data.transformed) {
+      return {
+        x: data.transformed.x || 0,
+        y: data.transformed.y || 0,
+        z: data.transformed.z || 0
+      };
+    } else if (data.raw) {
+      return {
+        x: data.raw.x || 0,
+        y: data.raw.y || 0,
+        z: data.raw.z || 0
+      };
     } else {
-      // In raw mode, map raw coordinates directly to vehicle-oriented coordinates
-      displayValues = {
-        x: data.y || 0,              // Y-axis is lateral (side-to-side)
-        y: data.x || 0,              // X-axis is longitudinal (forward-backward)
-        z: data.z || 0               // Z-axis is vertical (up-down)
+      return {
+        x: data.x || 0,
+        y: data.y || 0,
+        z: data.z || 0
       };
     }
-  }
-  // Standard handling for other sensor types
-  else if (data.filtered && showProcessed) {
-    displayValues = {
-      x: data.filtered.x || 0,
-      y: data.filtered.y || 0,
-      z: data.filtered.z || 0
-    };
-  } else if (data.transformed) {
-    displayValues = {
-      x: data.transformed.x || 0,
-      y: data.transformed.y || 0,
-      z: data.transformed.z || 0
-    };
-  } else if (data.raw) {
-    displayValues = {
-      x: data.raw.x || 0,
-      y: data.raw.y || 0,
-      z: data.raw.z || 0
-    };
-  } else {
-    displayValues = {
-      x: data.x || 0,
-      y: data.y || 0,
-      z: data.z || 0
-    };
-  }
+  };
+  
+  // Get the display values
+  const displayValues = extractValues();
+  
+  // Debug logging for extracted values
+  useEffect(() => {
+    if (data && Math.random() < 0.01) {
+      console.log(`[SensorDisplay: ${title}] Extracted values:`, displayValues);
+    }
+  }, [data, displayValues, title]);
   
   // Helper to get axis labels based on sensor type
   const getAxisLabels = () => {

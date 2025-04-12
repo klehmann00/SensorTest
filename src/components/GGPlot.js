@@ -54,7 +54,6 @@ export default function GGPlot({
             distanceInterval: 1,
           },
           (location) => {
-        
             setSpeed(Math.max(0, location.coords.speed || 0));
             setHeading(location.coords.heading || 0);
           }
@@ -84,34 +83,59 @@ export default function GGPlot({
     
     refreshConfig();
   }, []);
-
+  
+  // Debug log to understand what data is being displayed
   useEffect(() => {
-    console.log(`GGPlot display mode: ${showProcessed ? 'Processed' : 'Raw'}`);
-  }, [showProcessed]);
+    if (processedData && Math.random() < 0.01) {
+      console.log(`[GGPlot] Mode: ${showProcessed ? 'Processed' : 'Raw'}`);
+      console.log('[GGPlot] Input data:', processedData);
+    }
+  }, [processedData, showProcessed]);
   
   const gToPixel = (g, isX) => {
     const scale = isX ? plotWidth : plotHeight;
     return padding + (scale / 2) + (g * scale / (2 * maxG));
   };
 
-  // CONSISTENT MAPPING: Always use the same coordinate system regardless of mode
-  // - Y-axis is lateral movement (side-to-side)
-  // - X-axis is longitudinal movement (forward/backward)
-  // - Z-axis is vertical movement (up/down)
-  
-  // For raw data, use y for lateral and x for longitudinal
-  // For processed data, use lateral and longitudinal properties directly
-  const lateralValue = showProcessed 
-    ? (processedData?.lateral || 0)
-    : (processedData?.x || 0);  // Y-axis is lateral in both modes
-      
-  const longitudinalValue = showProcessed
-    ? -1 * (processedData?.longitudinal || 0)  // Negate for display orientation
-    : -1 * (processedData?.y || 0);  // X-axis is longitudinal in both modes
-      
-  const verticalValue = showProcessed
-    ? (processedData?.vertical || 0)
-    : (processedData?.z || 0);  // Z-axis is vertical in both modes
+  // This function extracts values ensuring consistent axis mapping
+  const extractValues = () => {
+    if (!processedData) {
+      return { lateralValue: 0, longitudinalValue: 0, verticalValue: 0 };
+    }
+
+    let lateralValue, longitudinalValue, verticalValue;
+
+    if (showProcessed && processedData?.lateral !== undefined) {
+      // PROCESSED MODE - Use the labeled domain values
+      lateralValue = processedData.lateral || 0;
+      longitudinalValue = -1 * (processedData.longitudinal || 0); // Negate for display orientation
+      verticalValue = processedData.vertical || 0;
+    } else if (!showProcessed && processedData?.transformed) {
+      // RAW MODE with transformation data (calibrated)
+      // FIXED MAPPING: X is lateral, Y is longitudinal
+      lateralValue = processedData.transformed.x || 0; // X is lateral
+      longitudinalValue = -1 * (processedData.transformed.y || 0); // Y is longitudinal (negated)
+      verticalValue = processedData.transformed.z || 0;
+    } else {
+      // FALLBACK - Direct access to coordinates
+      // FIXED MAPPING: X is lateral, Y is longitudinal
+      lateralValue = processedData?.x || 0; // X is lateral in raw mode
+      longitudinalValue = -1 * (processedData?.y || 0); // Y is longitudinal in raw mode (negated)
+      verticalValue = processedData?.z || 0;
+    }
+
+    return { lateralValue, longitudinalValue, verticalValue };
+  };
+
+  // Then use these extracted values
+  const { lateralValue, longitudinalValue, verticalValue } = extractValues();
+
+  // Debug log for the extracted values
+  useEffect(() => {
+    if (processedData && Math.random() < 0.01) {
+      console.log('[GGPlot] Extracted values:', { lateralValue, longitudinalValue, verticalValue });
+    }
+  }, [processedData, lateralValue, longitudinalValue, verticalValue]);
 
   // Calculate point coordinates
   const currentPoint = {
@@ -119,13 +143,10 @@ export default function GGPlot({
     y: gToPixel(-longitudinalValue, false)
   };
 
-  // Updated renderAxes function that uses the main lateralValue, longitudinalValue, verticalValue
+  // Render axes with consistent labeling
   const renderAxes = () => {
     const centerX = padding + plotWidth / 2;
     const centerY = padding + plotHeight / 2;
-
-    // Use the values already calculated at component level
-    // Don't recalculate them here
     
     // Convert to bar height
     const maxVerticalG = 1; // Maximum vertical G to display
@@ -186,8 +207,6 @@ export default function GGPlot({
         >
           Brake
         </SvgText>
-
-       
 
         {/* Vertical G axis with point */}
         <Line 
@@ -272,8 +291,20 @@ export default function GGPlot({
     const topPath = createHalfEllipsePath(radiusX, radiusYTop, true);
     const bottomPath = createHalfEllipsePath(radiusX, radiusYBottom, false);
     
-    // Calculate metrics using VehicleDynamics
-    const tractionCircle = VehicleDynamics.calculateTractionCircle(processedData, showProcessed);
+    // Calculate metrics using VehicleDynamics - pass the data in the correct format
+    let tractionData;
+    if (showProcessed && processedData?.lateral !== undefined) {
+      tractionData = processedData;
+    } else {
+      // In raw mode, convert the data to the format expected by VehicleDynamics
+      tractionData = {
+        lateral: lateralValue,
+        longitudinal: -longitudinalValue, // Undo the negation we did for display
+        vertical: verticalValue
+      };
+    }
+    
+    const tractionCircle = VehicleDynamics.calculateTractionCircle(tractionData, showProcessed);
     const intensity = tractionCircle / 100; // 0 to 1
     
     // Get color based on traction utilization
@@ -370,26 +401,36 @@ export default function GGPlot({
     );
   };
 
-  // Get dynamics information and colors
-  const dynamics = VehicleDynamics.calculateDynamics(processedData, speed, showProcessed);
+  // Get dynamics information and colors - pass data in correct format
+  let dynamicsData;
+  if (showProcessed && processedData?.lateral !== undefined) {
+    dynamicsData = processedData;
+  } else {
+    // In raw mode, convert the data to the format expected by VehicleDynamics
+    dynamicsData = {
+      lateral: lateralValue,
+      longitudinal: -longitudinalValue, // Undo the negation we did for display
+      vertical: verticalValue
+    };
+  }
+  
+  const dynamics = VehicleDynamics.calculateDynamics(dynamicsData, speed, showProcessed);
   const pointColor = dynamics ? dynamics.lateralColor : "#FF6B6B";
 
   return (
     <View style={styles.container}>
       {/* Add Speed display outside SVG */}
-     {/* Inline Speed display without box */}
-<View style={styles.speedContainer}>
-  <View style={styles.speedInlineContainer}>
-    <Text style={styles.speedLabel}>Speed: </Text>
-    <Text style={styles.speedValue}>{(speed * 3.6).toFixed(1)} km/h</Text>
-  </View>
-</View>
+      <View style={styles.speedContainer}>
+        <View style={styles.speedInlineContainer}>
+          <Text style={styles.speedLabel}>Speed: </Text>
+          <Text style={styles.speedValue}>{(speed * 3.6).toFixed(1)} km/h</Text>
+        </View>
+      </View>
       
       {/* Add Vertical G display outside SVG */}
       <View style={styles.verticalGContainer}>
-        { /*<Text style={styles.verticalGLabel}>Vertical G</Text>} */}
         <Text style={styles.verticalGValue}>{verticalValue.toFixed(2)} G</Text>
-        </View>
+      </View>
       
       <Svg width={width} height={height}>
         {/* Draw traction circle first so it's behind everything else */}
@@ -432,7 +473,6 @@ export default function GGPlot({
     </View>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {

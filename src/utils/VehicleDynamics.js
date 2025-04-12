@@ -99,29 +99,42 @@ class VehicleDynamics {
    * Calculate the traction circle utilization
    * 
    * @param {Object} accelData - The accelerometer data
+   * @param {boolean} showProcessed - Whether data is in processed mode
    * @returns {number} - The percentage of traction circle used (0-100)
    */
   calculateTractionCircle(accelData, showProcessed = true) {
     if (!accelData) return 0;
     
-    // Select values based on mode
-    const lateral = showProcessed
-      ? (accelData.filtered_y || accelData.processed_lateral || accelData.lateral || accelData.y || 0)
-      : (accelData.lateral || accelData.x || 0);
-      
-    const longitudinal = showProcessed
-      ? (accelData.filtered_x || accelData.processed_longitudinal || accelData.longitudinal || accelData.x || 0)
-      : (accelData.longitudinal || accelData.y || 0);
+    let lateral, longitudinal;
     
-    // Rest of the function remains the same...
+    // Consistently extract the lateral and longitudinal values
+    if (showProcessed && accelData.lateral !== undefined) {
+      // Use domain-specific properties if in processed mode and they exist
+      lateral = accelData.lateral;
+      longitudinal = accelData.longitudinal;
+    } else if (accelData.filtered) {
+      // Use filtered x/y if available
+      lateral = accelData.filtered.y; // Y-axis is lateral
+      longitudinal = accelData.filtered.x; // X-axis is longitudinal
+    } else if (accelData.transformed) {
+      // Use transformed x/y if filtered not available
+      lateral = accelData.transformed.y; // Y-axis is lateral
+      longitudinal = accelData.transformed.x; // X-axis is longitudinal
+    } else {
+      // Direct raw data
+      lateral = accelData.y; // Y-axis is lateral
+      longitudinal = accelData.x; // X-axis is longitudinal
+    }
+    
+    // Handle undefined values
+    lateral = lateral || 0;
+    longitudinal = longitudinal || 0;
+    
+    // Calculate combined G-force
     const combinedG = Math.sqrt(
       Math.pow(lateral, 2) + 
       Math.pow(longitudinal, 2)
     );
-    
-    
-    // Calculate maximum available traction based on direction
-    // This creates an elliptical traction circle based on the vehicle's capabilities
     
     // Determine the direction (acceleration vs braking)
     const direction = longitudinal >= 0 ? 'acceleration' : 'braking';
@@ -130,7 +143,6 @@ class VehicleDynamics {
     const angle = Math.atan2(lateral, Math.abs(longitudinal));
     
     // Calculate the maximum traction available at this angle
-    // We're creating an elliptical shape using the performance levels
     let maxLateral = this.performanceLevel.cornering;
     let maxLongitudinal = direction === 'acceleration' 
       ? this.performanceLevel.acceleration 
@@ -154,26 +166,44 @@ class VehicleDynamics {
    * 
    * @param {Object} accelData - The accelerometer data
    * @param {number} speed - Current speed in m/s from GPS
+   * @param {boolean} showProcessed - Whether data is in processed mode
    * @returns {Object} - Vehicle dynamics information
    */
-    calculateDynamics(accelData, speed = null, showProcessed = true) {
+  calculateDynamics(accelData, speed = null, showProcessed = true) {
     if (!accelData) return null;
     
     const now = Date.now();
     
-    // Select values based on mode
-    const lateral = showProcessed
-      ? (accelData.filtered_y || accelData.processed_lateral || accelData.lateral || accelData.y || 0)
-      : (accelData.lateral || accelData.x || 0);
-      
-    const longitudinal = showProcessed
-      ? (accelData.filtered_x || accelData.processed_longitudinal || accelData.longitudinal || accelData.x || 0)
-      : (accelData.longitudinal || accelData.y || 0);
-      
-    const vertical = showProcessed
-      ? (accelData.filtered_z || accelData.processed_vertical || accelData.vertical || accelData.z || 0)
-      : (accelData.vertical || accelData.z || 0);
-      
+    let lateral, longitudinal, vertical;
+    
+    // Consistently extract the lateral, longitudinal, and vertical values
+    if (showProcessed && accelData.lateral !== undefined) {
+      // Use domain-specific properties if in processed mode and they exist
+      lateral = accelData.lateral;
+      longitudinal = accelData.longitudinal;
+      vertical = accelData.vertical;
+    } else if (accelData.filtered) {
+      // Use filtered values if available
+      lateral = accelData.filtered.y; // Y-axis is lateral
+      longitudinal = accelData.filtered.x; // X-axis is longitudinal
+      vertical = accelData.filtered.z; // Z-axis is vertical
+    } else if (accelData.transformed) {
+      // Use transformed values if filtered not available
+      lateral = accelData.transformed.y; // Y-axis is lateral
+      longitudinal = accelData.transformed.x; // X-axis is longitudinal
+      vertical = accelData.transformed.z; // Z-axis is vertical
+    } else {
+      // Direct raw data
+      lateral = accelData.y; // Y-axis is lateral
+      longitudinal = accelData.x; // X-axis is longitudinal
+      vertical = accelData.z; // Z-axis is vertical
+    }
+    
+    // Handle undefined values
+    lateral = lateral || 0;
+    longitudinal = longitudinal || 0;
+    vertical = vertical || 0;
+    
     // Calculate time delta in seconds
     let dt = 0;
     if (this.lastUpdateTime > 0) {
@@ -190,11 +220,9 @@ class VehicleDynamics {
         lateralColor: this.getAccelerationColor(lateral, 'lateral'),
         longitudinalColor: this.getAccelerationColor(longitudinal, 'longitudinal'),
         verticalColor: this.getAccelerationColor(vertical, 'vertical'),
-        tractionCircle: this.calculateTractionCircle(accelData)
+        tractionCircle: this.calculateTractionCircle(accelData, showProcessed)
       };
     }
-    
-    // Calculate vehicle dynamics
     
     // Convert G forces to m/s²
     const accelX = longitudinal * this.GRAVITY;
@@ -241,7 +269,7 @@ class VehicleDynamics {
       speed: Math.sqrt(Math.pow(this.velocityX, 2) + Math.pow(this.velocityY, 2)),
       turningRadius,
       stoppingDistance,
-      tractionCircle: this.calculateTractionCircle(accelData)
+      tractionCircle: this.calculateTractionCircle(accelData, showProcessed)
     };
   }
   

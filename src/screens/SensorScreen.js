@@ -6,11 +6,9 @@ import {
   Text, 
   View, 
   ScrollView,
-  Button,
   Alert,
   ActivityIndicator,
   TouchableOpacity,
-  Dimensions,
   AppState
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
@@ -86,7 +84,7 @@ const SensorScreen = () => {
               x: 0.025,  // For accelerometer
               y: 0.025,  // For accelerometer
               z: 0.05,   // For accelerometer
-              gyroX: 0.3, // For gyroscope (rad/s) - add these new properties
+              gyroX: 0.3, // For gyroscope (rad/s)
               gyroY: 0.3, // For gyroscope (rad/s)
               gyroZ: 0.3  // For gyroscope (rad/s)
             },
@@ -94,7 +92,7 @@ const SensorScreen = () => {
               x: 0.1,    // For accelerometer
               y: 0.1,    // For accelerometer
               z: 0.2,    // For accelerometer
-              gyroX: 0.9, // For gyroscope - add these new properties
+              gyroX: 0.9, // For gyroscope
               gyroY: 0.01, // For gyroscope
               gyroZ: 0.1  // For gyroscope
             }
@@ -104,7 +102,6 @@ const SensorScreen = () => {
           debugMode: false
         });
        
-        
         // Subscribe to AppState changes
         const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
         
@@ -124,7 +121,7 @@ const SensorScreen = () => {
   
   // Handle app state changes
   const handleAppStateChange = (nextAppState) => {
-    console.log(`App state changed: ${appStateRef.current} -> ${nextAppState}`);
+    console.log(`App state changed: ${appStateRef.current} → ${nextAppState}`);
     appStateRef.current = nextAppState;
     
     // If going to background while recording, make sure we're in background mode
@@ -205,50 +202,55 @@ const SensorScreen = () => {
   }, []);
   
   // Handle accelerometer data
-
-const handleAccelerometerData = (rawData) => {
-  try {
-    console.log('=== RAW ACCEL INPUT ===');
-    console.log(JSON.stringify(rawData, null, 2));
-    
-    // Handle calibration mode
-    if (calibratingRef.current) {
-      CalibrationSystem.addCalibrationSample(rawData);
-      setAccelData(rawData);
-      return;
-    }
-    
-    // Always process raw data through our pipeline
-    const processedData = SensorProcessor.processAccelerometerData(rawData);
-      console.log('=== PROCESSED ACCEL OUTPUT ===');
-      console.log(JSON.stringify(processedData, null, 2));
-      
-
-    // Update UI with appropriate data
-    setAccelData(rawData); // Store original raw data
-    setProcessedAccelData(processedData); // Store all processed stages
-
-    // Store data if recording
-    if (recordingRef.current && sessionIdRef.current) {
-      const userId = AuthManager.getCurrentUserId();
-      if (userId) {
-        // Always store the fully processed data when recording
-        CloudStorage.queueData(userId, sessionIdRef.current, 'accelerometer', processedData);
-        
-        // Update data point count
-        dataPointCountRef.current += 1;
-        setDataPointCount(dataPointCountRef.current);
+  const handleAccelerometerData = (rawData) => {
+    try {
+      // Handle calibration mode
+      if (calibratingRef.current) {
+        CalibrationSystem.addCalibrationSample(rawData);
+        setAccelData(rawData);
+        return;
       }
+      
+      // Always process raw data through our pipeline
+      const processedData = SensorProcessor.processAccelerometerData(rawData);
+      
+      // Store both the raw AND the processed data
+      setAccelData({
+        ...rawData,
+        // Add the transformed data from the processor to make it available in raw mode
+        transformed: processedData.transformed 
+      });
+      setProcessedAccelData(processedData);
+      
+      // Debug log to see what's being stored
+      if (Math.random() < 0.01) { // Only log occasionally
+        console.log('[TEST] Raw mode data:', JSON.stringify(showProcessed ? processedData : {
+          ...rawData,
+          transformed: processedData.transformed
+        }, null, 2));
+      }
+
+      // Store data if recording
+      if (recordingRef.current && sessionIdRef.current) {
+        const userId = AuthManager.getCurrentUserId();
+        if (userId) {
+          // Always store the fully processed data when recording
+          CloudStorage.queueData(userId, sessionIdRef.current, 'accelerometer', processedData);
+          
+          // Update data point count
+          dataPointCountRef.current += 1;
+          setDataPointCount(dataPointCountRef.current);
+        }
+      }
+    } catch (error) {
+      console.error("Error processing accelerometer data:", error);
     }
-  } catch (error) {
-    console.error("Error processing accelerometer data:", error);
-  }
-};
+  };
   
-  // Handle gyroscope data
+  // Handle gyroscope data - updated for consistency with accelerometer
   const handleGyroscopeData = (rawData) => {
     try {
-      // Store a reference to the raw data for debugging
+      // Store a reference to the raw data
       const timestamp = Date.now();
       const timestampedRawData = { ...rawData, timestamp };
       
@@ -261,8 +263,14 @@ const handleAccelerometerData = (rawData) => {
       // Process through pipeline
       const processedData = SensorProcessor.processGyroscopeData(timestampedRawData);
       
-      // Update UI
-      setGyroData(processedData);
+      // Update UI with both raw and processed data (similar to accelerometer)
+      setGyroData({
+        ...timestampedRawData,
+        transformed: processedData.transformed,
+        roll: processedData.roll,
+        pitch: processedData.pitch,
+        yaw: processedData.yaw
+      });
       
       // Store data if recording
       if (recordingRef.current && sessionIdRef.current) {
@@ -305,7 +313,7 @@ const handleAccelerometerData = (rawData) => {
     const userId = AuthManager.getCurrentUserId();
     if (!userId) {
       Alert.alert('Error', 'You must be logged in to record data');
-      return;
+      return false;
     }
     
     const newSessionId = Date.now().toString();
@@ -510,18 +518,39 @@ const handleAccelerometerData = (rawData) => {
     );
   };
   
-// Toggle processed data display
-const toggleDataProcessing = () => {
-  const newMode = !showProcessed;
-    console.log(`=== TOGGLING MODE: ${showProcessed ? 'Processed' : 'Raw'} -> ${newMode ? 'Processed' : 'Raw'} ===`);
-  setShowProcessed(newMode);
-  SensorProcessor.setFiltering(newMode);
-};
+  // Toggle processed data display with enhanced debugging
+  const toggleDataProcessing = () => {
+    const newMode = !showProcessed;
+    console.log(`[FLOW] Toggling display mode: ${showProcessed ? 'Processed' : 'Raw'} → ${newMode ? 'Processed' : 'Raw'}`);
+    
+    // Add debug logging to confirm what data is being passed to components
+    if (Math.random() < 0.05) { // Increased probability for more frequent logging during testing
+      if (newMode) {
+        console.log('[DEBUG] Switching to Processed mode with data:', 
+                  JSON.stringify(processedAccelData ? {
+                    lateral: processedAccelData.lateral,
+                    longitudinal: processedAccelData.longitudinal,
+                    vertical: processedAccelData.vertical
+                  } : 'null', null, 2));
+      } else {
+        console.log('[DEBUG] Switching to Raw mode with data:', 
+                  JSON.stringify(accelData ? {
+                    x: accelData.x,
+                    y: accelData.y,
+                    z: accelData.z,
+                    transformed: accelData.transformed ? 'present' : 'missing'
+                  } : 'null', null, 2));
+      }
+    }
+    
+    setShowProcessed(newMode);
+    SensorProcessor.setFiltering(newMode);
+  };
 
-// Toggle debug panel
-const toggleDebugPanel = () => {
-  setShowDebugPanel(!showDebugPanel);
-};
+  // Toggle debug panel
+  const toggleDebugPanel = () => {
+    setShowDebugPanel(!showDebugPanel);
+  };
   
   // Logout handler
   const handleLogout = async () => {
@@ -546,10 +575,6 @@ const toggleDebugPanel = () => {
       Alert.alert('Not Calibrating', 'Start calibration first.');
     }
   };
-  console.log('=== DATA BEING PASSED TO COMPONENTS ===');
-  console.log('showProcessed:', showProcessed);
-  console.log('GGPlot data:', JSON.stringify(showProcessed ? processedAccelData : accelData, null, 2));
-  console.log('SensorDisplay data:', JSON.stringify(showProcessed ? processedAccelData : accelData, null, 2));
   
   return (
     <ScrollView style={styles.scrollView}>
@@ -683,7 +708,6 @@ const toggleDebugPanel = () => {
         </View>
         
         {/* Sensor displays */}
-
         <SensorDisplay 
           title="Accelerometer (G)" 
           data={showProcessed ? processedAccelData : accelData} 
@@ -691,7 +715,6 @@ const toggleDebugPanel = () => {
           scale={1} 
           showProcessed={showProcessed} 
         />
-
         
         <SensorDisplay 
           title="Gyroscope (rad/s)" 
@@ -700,11 +723,13 @@ const toggleDebugPanel = () => {
           scale={2} 
           showProcessed={showProcessed} 
         />
+        
         <View style={styles.gyroVisualizerContainer}>
           <Text style={styles.sectionTitle}>Rotation Rates</Text>
            <GyroVisualizer 
             data={gyroData} 
             size={150}
+            showProcessed={showProcessed}
           />
         </View>
 
@@ -856,6 +881,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.3)', // Subtle border
     width: '100%', // Match GGPlot width
   },
+  sectionTitle: {
+    color: 'white',
+    fontSize: 18,
+    marginBottom: 10,
+  }
 });
 
 export default SensorScreen;
