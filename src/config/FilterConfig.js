@@ -24,7 +24,7 @@ const FilterConfig = {
       // Post-transformation processing (second stage)
       processed: {
         maxDelta: { x: 0.3, y: 0.3, z: 0.3 },
-        filter: { x: 0.01, y: 0.01, z: 0.01 } // Your very low values for strong filtering
+        filter: { x: 0.5, y: 0.5, z: 0.5 } // Your very low values for strong filtering
       }
     }
   };

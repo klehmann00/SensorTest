@@ -226,41 +226,36 @@ const SensorScreen = () => {
   };
   
   // Handle gyroscope data - updated for consistency with accelerometer
-  const handleGyroscopeData = (rawData) => {
-    try {
-      // Store a reference to the raw data
-      const timestamp = Date.now();
-      const timestampedRawData = { ...rawData, timestamp };
-      
-      // Skip processing during calibration
-      if (calibratingRef.current) {
-        setGyroData(timestampedRawData);
-        return;
-      }
-      
-      // Process through pipeline
-      const processedData = SensorProcessor.processGyroscopeData(timestampedRawData);
-      
-      // Update UI with both raw and processed data (similar to accelerometer)
-      setGyroData({
-        ...timestampedRawData,
-        transformed: processedData.transformed,
-        roll: processedData.roll,
-        pitch: processedData.pitch,
-        yaw: processedData.yaw
-      });
-      
-      // Store data if recording
-      if (recordingRef.current && sessionIdRef.current) {
-        const userId = AuthManager.getCurrentUserId();
-        if (userId) {
-          CloudStorage.queueData(userId, sessionIdRef.current, 'gyroscope', processedData);
-        }
-      }
-    } catch (error) {
-      console.error("Error processing gyroscope data:", error);
+  // Handle gyroscope data - updated for consistency with accelerometer
+const handleGyroscopeData = (rawData) => {
+  try {
+    // Store a reference to the raw data
+    const timestamp = Date.now();
+    const timestampedRawData = { ...rawData, timestamp };
+    
+    // Skip processing during calibration
+    if (calibratingRef.current) {
+      setGyroData(timestampedRawData);
+      return;
     }
-  };
+    
+    // Process through pipeline
+    const processedData = SensorProcessor.processGyroscopeData(timestampedRawData);
+    
+    // Update UI with the COMPLETE processed data
+    setGyroData(processedData);  // Store the entire processed object
+    
+    // Store data if recording
+    if (recordingRef.current && sessionIdRef.current) {
+      const userId = AuthManager.getCurrentUserId();
+      if (userId) {
+        CloudStorage.queueData(userId, sessionIdRef.current, 'gyroscope', processedData);
+      }
+    }
+  } catch (error) {
+    console.error("Error processing gyroscope data:", error);
+  }
+};
   
   // Handle magnetometer data
   const handleMagnetometerData = (rawData) => {
