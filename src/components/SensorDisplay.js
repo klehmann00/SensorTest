@@ -14,6 +14,8 @@ import PropTypes from 'prop-types';
  */
 const SensorDisplay = ({ title, data, color, scale = 1, showProcessed = true }) => {
   // Handle null or incomplete data
+  console.log(`[SensorDisplay: ${title}] showProcessed=${showProcessed}, hasRoll=${data && data.roll !== undefined}, hasFiltered=${data && data.filtered !== undefined}`);
+
   if (!data) {
     return (
       <View style={styles.visualContainer}>
@@ -34,7 +36,7 @@ const SensorDisplay = ({ title, data, color, scale = 1, showProcessed = true }) 
   // Extract the appropriate values based on sensor type and processing mode
   const extractValues = () => {
     // Special handling for gyroscope data
-    if (title.toLowerCase().includes('gyro')) {
+    if (showProcessed && data.roll !== undefined) {
       // Use roll/pitch/yaw properties if available
       if (data.roll !== undefined) {
         return {

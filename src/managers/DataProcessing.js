@@ -4,18 +4,18 @@
  * Handles data filtering and smoothing
  * This class applies filters to already-transformed data
  */
+
+import FilterConfig from '../config/FilterConfig';
+
 class DataProcessor {
   constructor() {
     this.reset();
     
     // Default processing parameters
     this.params = {
-      // Rate limiting settings (max change per reading)
-      maxDelta: {
-        x: 0.025,  // Lateral axis (G)
-        y: 0.025,  // Longitudinal axis (G)
-        z: 0.05,   // Vertical axis (G)
-      },
+      maxDelta: FilterConfig.accelerometer.raw.maxDelta,
+      filter: FilterConfig.accelerometer.raw.filter
+      };
       
       // Low-pass filter constants (lower = more filtering)
       filter: {
@@ -177,6 +177,10 @@ class DataProcessor {
    * @returns {Object} Processed data
    */
   processGyroscopeData(data) {
+
+    const gyroMaxDelta = FilterConfig.gyroscope.raw.maxDelta;
+    const gyroFilter = FilterConfig.gyroscope.raw.filter;
+    
     // Similar structure to processAccelerometerData but with appropriate
     // parameters for gyroscope data
     if (!data || !data.transformed) {

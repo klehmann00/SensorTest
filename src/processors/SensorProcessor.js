@@ -1,5 +1,6 @@
 // src/processors/SensorProcessor.js
 import CoordinateTransformer from './CoordinateTransformer';
+import FilterConfig from '../config/FilterConfig';
 
 // Simple implementation that avoids class instantiation issues
 const SensorProcessor = {
@@ -9,12 +10,21 @@ const SensorProcessor = {
     useCalibration: true,
     debugMode: false,
     processing: {
-      maxDelta: { x: 0.025, y: 0.025, z: 0.05 },
-      filter: { x: 0.05, y: 0.05, z: 0.05 }, // Reduced alpha values for accelerometer
-      // Gyroscope-specific settings
-      gyro: {
-        maxDelta: { x: 0.2, y: 0.2, z: 0.2 },
-        filter: { x: 0.1, y: 0.1, z: 0.1 }
+      maxDelta: { 
+        x: FilterConfig.accelerometer.processed.maxDelta.x,
+        y: FilterConfig.accelerometer.processed.maxDelta.y,
+        z: FilterConfig.accelerometer.processed.maxDelta.z,
+        gyroX: FilterConfig.gyroscope.processed.maxDelta.x,
+        gyroY: FilterConfig.gyroscope.processed.maxDelta.y,
+        gyroZ: FilterConfig.gyroscope.processed.maxDelta.z
+      },
+      filter: { 
+        x: FilterConfig.accelerometer.processed.filter.x,
+        y: FilterConfig.accelerometer.processed.filter.y,
+        z: FilterConfig.accelerometer.processed.filter.z,
+        gyroX: FilterConfig.gyroscope.processed.filter.x,
+        gyroY: FilterConfig.gyroscope.processed.filter.y,
+        gyroZ: FilterConfig.gyroscope.processed.filter.z
       }
     }
   },
@@ -146,52 +156,64 @@ const SensorProcessor = {
     try {
       // Step 1: Add timestamp if missing
       let data = { ...rawData, timestamp: rawData.timestamp || Date.now() };
+      let transformResult = { raw: data, transformed: data };
       
-      // Step 2: Get gyro-specific settings
-      const gyroMaxDelta = this.config.processing.gyro?.maxDelta || {
-        x: 0.2, y: 0.2, z: 0.2
-      };
+      // Step 2: Apply calibration if enabled and available
+      console.log(`[FLOW] SensorProcessor applying calibration: ${this.config.useCalibration && CoordinateTransformer.calibrated}`);
+      if (this.config.useCalibration && CoordinateTransformer.calibrated) {
+        transformResult = CoordinateTransformer.applyTransformation(data);
+      }
       
-      const gyroFilter = this.config.processing.gyro?.filter || {
-        x: 0.1, y: 0.1, z: 0.1
-      };
+      // Step 3: Get the transformed data
+      const transformedData = transformResult.transformed;
+    
       
-      // Step 3: Apply rate limiting
+      // Step 5: Apply rate limiting
       const limited = {
-        x: this.limitRateOfChange(data.x, this.gyroPrevValues.x, gyroMaxDelta.x),
-        y: this.limitRateOfChange(data.y, this.gyroPrevValues.y, gyroMaxDelta.y),
-        z: this.limitRateOfChange(data.z, this.gyroPrevValues.z, gyroMaxDelta.z),
+        x: this.limitRateOfChange(data.x, this.gyroPrevValues.x, this.config.processing.maxDelta.gyroX),
+        y: this.limitRateOfChange(data.y, this.gyroPrevValues.y, this.config.processing.maxDelta.gyroY),
+        z: this.limitRateOfChange(data.z, this.gyroPrevValues.z, this.config.processing.maxDelta.gyroZ),
         timestamp: data.timestamp
       };
       
       // Update previous values
       this.gyroPrevValues = { ...limited };
       
-      // Step 4: Apply filtering if enabled
+      // Step 6: Apply filtering if enabled
       let filtered = null;
       if (this.config.useFiltering) {
+        console.log(`Gyro filter values: X=${this.config.processing.filter.gyroX}, Y=${this.config.processing.filter.gyroY}, Z=${this.config.processing.filter.gyroZ}`);
+
         filtered = {
-          x: this.lowPassFilter(limited.x, this.gyroPrevFiltered.x, gyroFilter.x),
-          y: this.lowPassFilter(limited.y, this.gyroPrevFiltered.y, gyroFilter.y),
-          z: this.lowPassFilter(limited.z, this.gyroPrevFiltered.z, gyroFilter.z),
+          x: this.lowPassFilter(limited.x, this.gyroPrevFiltered.x, this.config.processing.filter.gyroX),
+          y: this.lowPassFilter(limited.y, this.gyroPrevFiltered.y, this.config.processing.filter.gyroY),
+          z: this.lowPassFilter(limited.z, this.gyroPrevFiltered.z, this.config.processing.filter.gyroZ),
           timestamp: limited.timestamp
         };
-        
+        console.log(`Gyro filtering: Input=${JSON.stringify(limited)}, Output=${JSON.stringify(filtered)}`);
+
         // Update filtered values
         this.gyroPrevFiltered = { ...filtered };
       }
       
-      // Step 5: Return result with domain-specific mapping
+      // Step 7: Define processed data (with final values)
+      const processed = filtered || limited || transformedData;
+      
+      // Step 8: Return result with domain-specific mapping
+      // CRITICAL - Consistent mapping for vehicle coordinates:
+      // - X sensor axis -> Lateral vehicle axis (side-to-side)
+      // - Y sensor axis -> Longitudinal vehicle axis (forward/backward)
+      // - Z sensor axis -> Vertical vehicle axis (up/down)
       return {
-        raw: data,
-        transformed: data,
+        raw: transformResult.raw,
+        transformed: transformedData,
         limited: limited,
         filtered: filtered,
-        processed: filtered || limited || data,
-        // Domain-specific names for rotation rates
-        roll: filtered ? filtered.x : (limited ? limited.x : data.x),
-        pitch: filtered ? filtered.y : (limited ? limited.y : data.y),
-        yaw: filtered ? filtered.z : (limited ? limited.z : data.z),
+        processed: processed,
+        // Domain-specific names for rotation rates - FIXED MAPPING
+        roll: processed.x,    // X-axis rotation (roll) - around lateral axis
+        pitch: processed.y,   // Y-axis rotation (pitch) - around longitudinal axis
+        yaw: processed.z,     // Z-axis rotation (yaw) - around vertical axis
         // For debugging
         timestamp: data.timestamp
       };

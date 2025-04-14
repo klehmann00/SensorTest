@@ -78,29 +78,7 @@ const SensorScreen = () => {
         updateCalibrationInfo();
         
         // Filter and Limiter definitions
-        SensorProcessor.initialize({
-          processing: {
-            maxDelta: { 
-              x: 0.025,  // For accelerometer
-              y: 0.025,  // For accelerometer
-              z: 0.05,   // For accelerometer
-              gyroX: 0.3, // For gyroscope (rad/s)
-              gyroY: 0.3, // For gyroscope (rad/s)
-              gyroZ: 0.3  // For gyroscope (rad/s)
-            },
-            filter: { 
-              x: 0.1,    // For accelerometer
-              y: 0.1,    // For accelerometer
-              z: 0.2,    // For accelerometer
-              gyroX: 0.9, // For gyroscope
-              gyroY: 0.01, // For gyroscope
-              gyroZ: 0.1  // For gyroscope
-            }
-          },
-          useFiltering: true,
-          useCalibration: true,
-          debugMode: false
-        });
+        SensorProcessor.initialize();
        
         // Subscribe to AppState changes
         const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
