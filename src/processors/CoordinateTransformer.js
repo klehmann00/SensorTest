@@ -37,7 +37,6 @@ class CoordinateTransformer {
    * @returns {Object} Transformed data
    */
   applyTransformation(data) {
-    console.log(`[FLOW] CoordinateTransformer: calibration status = ${this.calibrated}`);
 
     if (!this.validateData(data)) {
       return { raw: data || {}, transformed: data || {} };
@@ -234,24 +233,12 @@ class CoordinateTransformer {
       
       this.calibrated = true;
 
-      // Debug the calculated matrix
-      console.log('[DIAG] ===== CALIBRATION MATRIX RESULTS =====');
-      console.log('[DIAG] Average calibration vector:', avgVector);
-      console.log('[DIAG] Normalized gravity vector:', normalizedGravity);
-      console.log('[DIAG] Final transformation matrix:');
-      console.log(`[DIAG] X-axis (lateral): [${this.transformMatrix[0][0].toFixed(4)}, ${this.transformMatrix[0][1].toFixed(4)}, ${this.transformMatrix[0][2].toFixed(4)}]`);
-      console.log(`[DIAG] Y-axis (longitudinal): [${this.transformMatrix[1][0].toFixed(4)}, ${this.transformMatrix[1][1].toFixed(4)}, ${this.transformMatrix[1][2].toFixed(4)}]`);
-      console.log(`[DIAG] Z-axis (vertical): [${this.transformMatrix[2][0].toFixed(4)}, ${this.transformMatrix[2][1].toFixed(4)}, ${this.transformMatrix[2][2].toFixed(4)}]`);
-      console.log('[DIAG] Test transformation of original gravity vector:');
       const testTransform = {
         x: this.transformMatrix[0][0] * avgVector.x + this.transformMatrix[0][1] * avgVector.y + this.transformMatrix[0][2] * avgVector.z,
         y: this.transformMatrix[1][0] * avgVector.x + this.transformMatrix[1][1] * avgVector.y + this.transformMatrix[1][2] * avgVector.z,
         z: this.transformMatrix[2][0] * avgVector.x + this.transformMatrix[2][1] * avgVector.y + this.transformMatrix[2][2] * avgVector.z
       };
-      console.log(`[DIAG] Original gravity: (${avgVector.x.toFixed(4)}, ${avgVector.y.toFixed(4)}, ${avgVector.z.toFixed(4)})`);
-      console.log(`[DIAG] Transformed gravity: (${testTransform.x.toFixed(4)}, ${testTransform.y.toFixed(4)}, ${testTransform.z.toFixed(4)})`);
-      console.log('[DIAG] ==============================================');
-      
+ 
       console.log("Final transformation matrix:", this.transformMatrix);
       return this.transformMatrix;
     } catch (error) {
@@ -357,66 +344,37 @@ class CoordinateTransformer {
     ];
   }
   
-  /**
-   * Diagnose transformation by analyzing raw and transformed data
-   * @param {Object} rawData - Raw sensor data
-   * @param {Object} transformedData - Transformed sensor data
-   */
-  diagnoseTransformation(rawData, transformedData) {
-    console.log('[DIAG] ===== COORDINATE TRANSFORMATION DIAGNOSIS =====');
-    console.log('[DIAG] Raw data:', {
-      x: rawData.x.toFixed(4),
-      y: rawData.y.toFixed(4),
-      z: rawData.z.toFixed(4),
-      magnitude: this.calculateMagnitude(rawData).toFixed(4)
-    });
-    
-    console.log('[DIAG] Transformed data:', {
-      x: transformedData.x.toFixed(4),
-      y: transformedData.y.toFixed(4),
-      z: transformedData.z.toFixed(4),
-      magnitude: this.calculateMagnitude(transformedData).toFixed(4)
-    });
-    
-    if (this.calibrated) {
-      console.log('[DIAG] Transformation matrix:');
-      console.log(`[DIAG] X-axis (lateral): [${this.transformMatrix[0][0].toFixed(4)}, ${this.transformMatrix[0][1].toFixed(4)}, ${this.transformMatrix[0][2].toFixed(4)}]`);
-      console.log(`[DIAG] Y-axis (longitudinal): [${this.transformMatrix[1][0].toFixed(4)}, ${this.transformMatrix[1][1].toFixed(4)}, ${this.transformMatrix[1][2].toFixed(4)}]`);
-      console.log(`[DIAG] Z-axis (vertical): [${this.transformMatrix[2][0].toFixed(4)}, ${this.transformMatrix[2][1].toFixed(4)}, ${this.transformMatrix[2][2].toFixed(4)}]`);
-      
-      // Analyze the transformation in terms of which raw axes contribute to which transformed axes
-      console.log('[DIAG] Axis contributions:');
-      const contributions = {
-        x: [
-          Math.abs(this.transformMatrix[0][0]) > 0.5 ? 'X+++' : Math.abs(this.transformMatrix[0][0]) > 0.2 ? 'X++' : Math.abs(this.transformMatrix[0][0]) > 0.1 ? 'X+' : '',
-          Math.abs(this.transformMatrix[0][1]) > 0.5 ? 'Y+++' : Math.abs(this.transformMatrix[0][1]) > 0.2 ? 'Y++' : Math.abs(this.transformMatrix[0][1]) > 0.1 ? 'Y+' : '',
-          Math.abs(this.transformMatrix[0][2]) > 0.5 ? 'Z+++' : Math.abs(this.transformMatrix[0][2]) > 0.2 ? 'Z++' : Math.abs(this.transformMatrix[0][2]) > 0.1 ? 'Z+' : ''
-        ].filter(Boolean).join(', '),
-        y: [
-          Math.abs(this.transformMatrix[1][0]) > 0.5 ? 'X+++' : Math.abs(this.transformMatrix[1][0]) > 0.2 ? 'X++' : Math.abs(this.transformMatrix[1][0]) > 0.1 ? 'X+' : '',
-          Math.abs(this.transformMatrix[1][1]) > 0.5 ? 'Y+++' : Math.abs(this.transformMatrix[1][1]) > 0.2 ? 'Y++' : Math.abs(this.transformMatrix[1][1]) > 0.1 ? 'Y+' : '',
-          Math.abs(this.transformMatrix[1][2]) > 0.5 ? 'Z+++' : Math.abs(this.transformMatrix[1][2]) > 0.2 ? 'Z++' : Math.abs(this.transformMatrix[1][2]) > 0.1 ? 'Z+' : ''
-        ].filter(Boolean).join(', '),
-        z: [
-          Math.abs(this.transformMatrix[2][0]) > 0.5 ? 'X+++' : Math.abs(this.transformMatrix[2][0]) > 0.2 ? 'X++' : Math.abs(this.transformMatrix[2][0]) > 0.1 ? 'X+' : '',
-          Math.abs(this.transformMatrix[2][1]) > 0.5 ? 'Y+++' : Math.abs(this.transformMatrix[2][1]) > 0.2 ? 'Y++' : Math.abs(this.transformMatrix[2][1]) > 0.1 ? 'Y+' : '',
-          Math.abs(this.transformMatrix[2][2]) > 0.5 ? 'Z+++' : Math.abs(this.transformMatrix[2][2]) > 0.2 ? 'Z++' : Math.abs(this.transformMatrix[2][2]) > 0.1 ? 'Z+' : ''
-        ].filter(Boolean).join(', ')
-      };
-      
-      console.log(`[DIAG] Transformed X (lateral) comes from: ${contributions.x || 'negligible contributions'}`);
-      console.log(`[DIAG] Transformed Y (longitudinal) comes from: ${contributions.y || 'negligible contributions'}`);
-      console.log(`[DIAG] Transformed Z (vertical) comes from: ${contributions.z || 'negligible contributions'}`);
-      
-      // Gravity direction analysis
-      const gravityInRaw = this.findLikelyGravityAxis(rawData);
-      const gravityInTransformed = this.findLikelyGravityAxis(transformedData);
-      
-      console.log(`[DIAG] Likely gravity axis in raw data: ${gravityInRaw.axis} (${gravityInRaw.value.toFixed(4)})`);
-      console.log(`[DIAG] Likely gravity axis in transformed data: ${gravityInTransformed.axis} (${gravityInTransformed.value.toFixed(4)})`);
-      console.log('[DIAG] ==============================================');
-    }
-  }
+/**
+ * Diagnose transformation by analyzing raw and transformed data
+ * @param {Object} rawData - Raw sensor data
+ * @param {Object} transformedData - Transformed sensor data
+ */
+diagnoseTransformation(rawData, transformedData) {
+  if (!this.calibrated) return;
+  
+  // Analyze the transformation in terms of which raw axes contribute to which transformed axes
+  const contributions = {
+    x: [
+      Math.abs(this.transformMatrix[0][0]) > 0.5 ? 'X+++' : Math.abs(this.transformMatrix[0][0]) > 0.2 ? 'X++' : Math.abs(this.transformMatrix[0][0]) > 0.1 ? 'X+' : '',
+      Math.abs(this.transformMatrix[0][1]) > 0.5 ? 'Y+++' : Math.abs(this.transformMatrix[0][1]) > 0.2 ? 'Y++' : Math.abs(this.transformMatrix[0][1]) > 0.1 ? 'Y+' : '',
+      Math.abs(this.transformMatrix[0][2]) > 0.5 ? 'Z+++' : Math.abs(this.transformMatrix[0][2]) > 0.2 ? 'Z++' : Math.abs(this.transformMatrix[0][2]) > 0.1 ? 'Z+' : ''
+    ].filter(Boolean).join(', '),
+    y: [
+      Math.abs(this.transformMatrix[1][0]) > 0.5 ? 'X+++' : Math.abs(this.transformMatrix[1][0]) > 0.2 ? 'X++' : Math.abs(this.transformMatrix[1][0]) > 0.1 ? 'X+' : '',
+      Math.abs(this.transformMatrix[1][1]) > 0.5 ? 'Y+++' : Math.abs(this.transformMatrix[1][1]) > 0.2 ? 'Y++' : Math.abs(this.transformMatrix[1][1]) > 0.1 ? 'Y+' : '',
+      Math.abs(this.transformMatrix[1][2]) > 0.5 ? 'Z+++' : Math.abs(this.transformMatrix[1][2]) > 0.2 ? 'Z++' : Math.abs(this.transformMatrix[1][2]) > 0.1 ? 'Z+' : ''
+    ].filter(Boolean).join(', '),
+    z: [
+      Math.abs(this.transformMatrix[2][0]) > 0.5 ? 'X+++' : Math.abs(this.transformMatrix[2][0]) > 0.2 ? 'X++' : Math.abs(this.transformMatrix[2][0]) > 0.1 ? 'X+' : '',
+      Math.abs(this.transformMatrix[2][1]) > 0.5 ? 'Y+++' : Math.abs(this.transformMatrix[2][1]) > 0.2 ? 'Y++' : Math.abs(this.transformMatrix[2][1]) > 0.1 ? 'Y+' : '',
+      Math.abs(this.transformMatrix[2][2]) > 0.5 ? 'Z+++' : Math.abs(this.transformMatrix[2][2]) > 0.2 ? 'Z++' : Math.abs(this.transformMatrix[2][2]) > 0.1 ? 'Z+' : ''
+    ].filter(Boolean).join(', ')
+  };
+  
+  // Gravity direction analysis
+  const gravityInRaw = this.findLikelyGravityAxis(rawData);
+  const gravityInTransformed = this.findLikelyGravityAxis(transformedData);
+}
 
   /**
    * Find which axis likely represents gravity

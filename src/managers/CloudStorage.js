@@ -3,6 +3,9 @@ import { getDatabase, ref, set, get, push } from 'firebase/database';
 import { getAuth } from 'firebase/auth';
 import { Alert } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
+import SensorDataManager from '../managers/SensorDataManager';
+import ConfigurationManager from '../managers/ConfigurationManager';
+
 
 /**
  * Manages cloud storage and synchronization with efficient batching
@@ -283,34 +286,40 @@ class CloudStorage {
    * @returns {Promise<boolean>} Success status
    */
   async startRecordingSession(userId, sessionId, metadata = {}) {
+    console.log('CloudStorage.startRecordingSession called with:', userId, sessionId);
+
     if (!this.database || !userId || !sessionId) {
       console.error('Cannot start recording: missing database, userId or sessionId');
       return false;
     }
 
     try {
-      // Create default metadata if not provided
+      
+      // Get default values from ConfigurationManager
+      const processingConfig = ConfigurationManager.getCategory('processing');
+      
+      // Create metadata using actual current sensor configuration with proper fallbacks
       const sessionMetadata = {
         startTime: sessionId,
         deviceInfo: {
           sampleRates: {
-            accelerometer: 100, // 10 Hz
-            gyroscope: 100,     // 10 Hz
-            magnetometer: 100   // 10 Hz
+            accelerometer: processingConfig.accelUpdateRate || 100,
+            gyroscope: processingConfig.gyroUpdateRate || 100,
+            magnetometer: processingConfig.magUpdateRate || 100
           },
           units: {
             accelerometer: 'G',
             gyroscope: 'rad/s',
             magnetometer: 'μT'
           }
-        },
-        ...metadata
+        }
       };
       
       // Save metadata
       const metadataRef = ref(this.database, `users/${userId}/sessions/${sessionId}/metadata`);
       await set(metadataRef, sessionMetadata);
-      
+      console.log('Recording session started successfully');
+
       console.log(`Recording session ${sessionId} started for user ${userId}`);
       return true;
     } catch (error) {

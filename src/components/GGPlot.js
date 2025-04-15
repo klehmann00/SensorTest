@@ -1,6 +1,6 @@
 // src/components/GGPlot.js
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Dimensions, Text } from 'react-native';
 import Svg, { Circle, Line, Text as SvgText, Rect, Path } from 'react-native-svg';
 import * as Location from 'expo-location';
@@ -14,7 +14,7 @@ export default function GGPlot({
 }) {
 
   const [speed, setSpeed] = useState(0);
-  const [heading, setHeading] = useState(0);
+  // Remove unused heading state
   
   // Get configuration
   const [maxG, setMaxG] = useState(
@@ -34,6 +34,23 @@ export default function GGPlot({
   const padding = 40;
   const plotWidth = width - (padding * 2);
   const plotHeight = height - (padding * 2);
+
+  // Create half ellipse path function (moved outside render to avoid recreation)
+  const createHalfEllipsePath = useCallback((rx, ry, top, centerX, centerY) => {
+    const startAngle = top ? Math.PI : 0;
+    const endAngle = top ? 0 : Math.PI;
+    const sweepFlag = 1; // Always draw in a clockwise direction
+    
+    // Start point
+    const startX = centerX + rx * Math.cos(startAngle);
+    const startY = centerY + ry * Math.sin(startAngle);
+    
+    // End point
+    const endX = centerX + rx * Math.cos(endAngle);
+    const endY = centerY + ry * Math.sin(endAngle);
+    
+    return `M ${startX} ${startY} A ${rx} ${ry} 0 0 ${sweepFlag} ${endX} ${endY}`;
+  }, []);
 
   // Set up GPS location tracking
   useEffect(() => {
@@ -55,7 +72,7 @@ export default function GGPlot({
           },
           (location) => {
             setSpeed(Math.max(0, location.coords.speed || 0));
-            setHeading(location.coords.heading || 0);
+            // Removed setting heading since it's not used
           }
         );
       } catch (error) {
@@ -84,21 +101,13 @@ export default function GGPlot({
     refreshConfig();
   }, []);
   
-  // Debug log to understand what data is being displayed
-  useEffect(() => {
-    if (processedData && Math.random() < 0.01) {
-      console.log(`[GGPlot] Mode: ${showProcessed ? 'Processed' : 'Raw'}`);
-      console.log('[GGPlot] Input data:', processedData);
-    }
-  }, [processedData, showProcessed]);
-  
-  const gToPixel = (g, isX) => {
+  const gToPixel = useCallback((g, isX) => {
     const scale = isX ? plotWidth : plotHeight;
     return padding + (scale / 2) + (g * scale / (2 * maxG));
-  };
+  }, [padding, plotWidth, plotHeight, maxG]);
 
   // This function extracts values ensuring consistent axis mapping
-  const extractValues = () => {
+  const extractValues = useCallback(() => {
     if (!processedData) {
       return { lateralValue: 0, longitudinalValue: 0, verticalValue: 0 };
     }
@@ -125,17 +134,10 @@ export default function GGPlot({
     }
 
     return { lateralValue, longitudinalValue, verticalValue };
-  };
+  }, [processedData, showProcessed]);
 
   // Then use these extracted values
   const { lateralValue, longitudinalValue, verticalValue } = extractValues();
-
-  // Debug log for the extracted values
-  useEffect(() => {
-    if (processedData && Math.random() < 0.01) {
-      console.log('[GGPlot] Extracted values:', { lateralValue, longitudinalValue, verticalValue });
-    }
-  }, [processedData, lateralValue, longitudinalValue, verticalValue]);
 
   // Calculate point coordinates
   const currentPoint = {
@@ -144,14 +146,9 @@ export default function GGPlot({
   };
 
   // Render axes with consistent labeling
-  const renderAxes = () => {
+  const renderAxes = useCallback(() => {
     const centerX = padding + plotWidth / 2;
     const centerY = padding + plotHeight / 2;
-    
-    // Convert to bar height
-    const maxVerticalG = 1; // Maximum vertical G to display
-    const barHeight = (verticalValue / maxVerticalG) * (height - 2 * padding);
-    const barY = centerY - (barHeight / 2);
 
     return (
       <>
@@ -245,9 +242,9 @@ export default function GGPlot({
         </SvgText>
       </>
     );
-  };
+  }, [padding, plotWidth, plotHeight, width, height, verticalValue]);
   
-  const renderTractionCircle = () => {
+  const renderTractionCircle = useCallback(() => {
     if (!showTractionCircle) return null;
     
     const centerX = padding + plotWidth / 2;
@@ -268,28 +265,9 @@ export default function GGPlot({
     const radiusYTop = maxAccel * accelScale;
     const radiusYBottom = maxBraking * brakeScale;
     
-    // Create the paths for the top and bottom halves of the traction ellipse
-    const createHalfEllipsePath = (rx, ry, top) => {
-      // For top half, we go from -180° to 0°
-      // For bottom half, we go from 0° to 180°
-      const startAngle = top ? Math.PI : 0;
-      const endAngle = top ? 0 : Math.PI;
-      const sweepFlag = 1; // Always draw in a clockwise direction
-      
-      // Start point
-      const startX = centerX + rx * Math.cos(startAngle);
-      const startY = centerY + ry * Math.sin(startAngle);
-      
-      // End point
-      const endX = centerX + rx * Math.cos(endAngle);
-      const endY = centerY + ry * Math.sin(endAngle);
-      
-      return `M ${startX} ${startY} A ${rx} ${ry} 0 0 ${sweepFlag} ${endX} ${endY}`;
-    };
-    
     // Create paths for the top and bottom halves of the ellipse
-    const topPath = createHalfEllipsePath(radiusX, radiusYTop, true);
-    const bottomPath = createHalfEllipsePath(radiusX, radiusYBottom, false);
+    const topPath = createHalfEllipsePath(radiusX, radiusYTop, true, centerX, centerY);
+    const bottomPath = createHalfEllipsePath(radiusX, radiusYBottom, false, centerX, centerY);
     
     // Calculate metrics using VehicleDynamics - pass the data in the correct format
     let tractionData;
@@ -399,21 +377,28 @@ export default function GGPlot({
         </SvgText>
       </>
     );
-  };
+  }, [
+    padding, plotWidth, plotHeight, width, height, 
+    showTractionCircle, vehicleConfig, maxG, 
+    createHalfEllipsePath, lateralValue, longitudinalValue, 
+    verticalValue, processedData, showProcessed
+  ]);
 
   // Get dynamics information and colors - pass data in correct format
-  let dynamicsData;
-  if (showProcessed && processedData?.lateral !== undefined) {
-    dynamicsData = processedData;
-  } else {
-    // In raw mode, convert the data to the format expected by VehicleDynamics
-    dynamicsData = {
-      lateral: lateralValue,
-      longitudinal: -longitudinalValue, // Undo the negation we did for display
-      vertical: verticalValue
-    };
-  }
+  const getDynamicsData = useCallback(() => {
+    if (showProcessed && processedData?.lateral !== undefined) {
+      return processedData;
+    } else {
+      // In raw mode, convert the data to the format expected by VehicleDynamics
+      return {
+        lateral: lateralValue,
+        longitudinal: -longitudinalValue, // Undo the negation we did for display
+        vertical: verticalValue
+      };
+    }
+  }, [showProcessed, processedData, lateralValue, longitudinalValue, verticalValue]);
   
+  const dynamicsData = getDynamicsData();
   const dynamics = VehicleDynamics.calculateDynamics(dynamicsData, speed, showProcessed);
   const pointColor = dynamics ? dynamics.lateralColor : "#FF6B6B";
 

@@ -83,8 +83,6 @@ const SensorProcessor = {
       let data = { ...rawData, timestamp: rawData.timestamp || Date.now() };
       let transformResult = { raw: data, transformed: data };
       
-      console.log(`[FLOW] SensorProcessor applying calibration: ${this.config.useCalibration && CoordinateTransformer.calibrated}`);
-
       // Step 2: Apply calibration if enabled and available
       if (this.config.useCalibration && CoordinateTransformer.calibrated) {
         transformResult = CoordinateTransformer.applyTransformation(data);
@@ -161,7 +159,6 @@ processGyroscopeData: function(rawData) {
     let transformResult = { raw: data, transformed: data };
     
     // Step 2: Apply calibration if enabled and available
-    console.log(`[FLOW] SensorProcessor applying calibration: ${this.config.useCalibration && CoordinateTransformer.calibrated}`);
     if (this.config.useCalibration && CoordinateTransformer.calibrated) {
       transformResult = CoordinateTransformer.applyTransformation(data);
     }
@@ -183,7 +180,6 @@ processGyroscopeData: function(rawData) {
     // Step 5: Apply filtering if enabled
     let filtered = null;
     if (this.config.useFiltering) {
-      console.log(`Gyro filter values: X=${this.config.processing.filter.gyroX}, Y=${this.config.processing.filter.gyroY}, Z=${this.config.processing.filter.gyroZ}`);
 
       filtered = {
         x: this.lowPassFilter(limited.x, this.gyroPrevFiltered.x, this.config.processing.filter.gyroX),
@@ -191,7 +187,6 @@ processGyroscopeData: function(rawData) {
         z: this.lowPassFilter(limited.z, this.gyroPrevFiltered.z, this.config.processing.filter.gyroZ),
         timestamp: limited.timestamp
       };
-      console.log(`Gyro filtering: Input=${JSON.stringify(limited)}, Output=${JSON.stringify(filtered)}`);
 
       // Update filtered values
       this.gyroPrevFiltered = { ...filtered };
@@ -255,7 +250,6 @@ processGyroscopeData: function(rawData) {
   setCalibration: function(enabled) {
     const previous = this.config.useCalibration;
     this.config.useCalibration = !!enabled;
-    console.log(`[FLOW] SensorProcessor calibration: ${previous} → ${this.config.useCalibration}`);
     return this.config.useCalibration;
   },
   

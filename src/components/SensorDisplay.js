@@ -14,7 +14,6 @@ import PropTypes from 'prop-types';
  */
 const SensorDisplay = ({ title, data, color, scale = 1, showProcessed = true }) => {
   // Handle null or incomplete data
-  console.log(`[SensorDisplay: ${title}] showProcessed=${showProcessed}, hasRoll=${data && data.roll !== undefined}, hasFiltered=${data && data.filtered !== undefined}`);
 
   if (!data) {
     return (
@@ -25,14 +24,7 @@ const SensorDisplay = ({ title, data, color, scale = 1, showProcessed = true }) 
     );
   }
   
-  // Debug logging - uncomment when debugging
-  useEffect(() => {
-    if (data && Math.random() < 0.01) {
-      console.log(`[SensorDisplay: ${title}] Mode: ${showProcessed ? 'Processed' : 'Raw'}`);
-      console.log(`[SensorDisplay: ${title}] Data:`, JSON.stringify(data, null, 2));
-    }
-  }, [data, showProcessed, title]);
-  
+
   // Extract the appropriate values based on sensor type and processing mode
   const extractValues = () => {
     // Special handling for gyroscope data
@@ -125,13 +117,6 @@ const SensorDisplay = ({ title, data, color, scale = 1, showProcessed = true }) 
   
   // Get the display values
   const displayValues = extractValues();
-  
-  // Debug logging for extracted values
-  useEffect(() => {
-    if (data && Math.random() < 0.01) {
-      console.log(`[SensorDisplay: ${title}] Extracted values:`, displayValues);
-    }
-  }, [data, displayValues, title]);
   
   // Helper to get axis labels based on sensor type
   const getAxisLabels = () => {

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useAdmin } from '../contexts/AdminContext';
+import { getDatabase } from 'firebase/database';
 
 // Import managers and processors
 import SensorDataManager from '../managers/SensorDataManager';
@@ -72,6 +73,11 @@ const SensorScreen = () => {
         // Subscribe to energy manager events
         EnergyManager.subscribe(handlePowerModeChange);
         
+        // Initialize CloudStorage with the database (add this line)
+        const database = getDatabase();
+        CloudStorage.initialize(database);
+        console.log('CloudStorage initialized with database:', !!database);
+
         // Initialize calibration system and load saved calibration
         const calibrationLoaded = await CalibrationSystem.initialize();
         setIsCalibrated(calibrationLoaded);
@@ -199,14 +205,6 @@ const SensorScreen = () => {
         transformed: processedData.transformed 
       });
       setProcessedAccelData(processedData);
-      
-      // Debug log to see what's being stored
-      if (Math.random() < 0.01) { // Only log occasionally
-        console.log('[TEST] Raw mode data:', JSON.stringify(showProcessed ? processedData : {
-          ...rawData,
-          transformed: processedData.transformed
-        }, null, 2));
-      }
 
       // Store data if recording
       if (recordingRef.current && sessionIdRef.current) {
@@ -294,7 +292,8 @@ const handleGyroscopeData = (rawData) => {
     
     // Create session in database
     const success = await CloudStorage.startRecordingSession(userId, newSessionId);
-    
+    //const success = await StorageManager.startRecordingSession(userId, newSessionId);
+
     if (success) {
       console.log(`Recording started successfully: user=${userId}, session=${newSessionId}`);
       setSessionId(newSessionId);
@@ -494,27 +493,6 @@ const handleGyroscopeData = (rawData) => {
   // Toggle processed data display with enhanced debugging
   const toggleDataProcessing = () => {
     const newMode = !showProcessed;
-    console.log(`[FLOW] Toggling display mode: ${showProcessed ? 'Processed' : 'Raw'} → ${newMode ? 'Processed' : 'Raw'}`);
-    
-    // Add debug logging to confirm what data is being passed to components
-    if (Math.random() < 0.05) { // Increased probability for more frequent logging during testing
-      if (newMode) {
-        console.log('[DEBUG] Switching to Processed mode with data:', 
-                  JSON.stringify(processedAccelData ? {
-                    lateral: processedAccelData.lateral,
-                    longitudinal: processedAccelData.longitudinal,
-                    vertical: processedAccelData.vertical
-                  } : 'null', null, 2));
-      } else {
-        console.log('[DEBUG] Switching to Raw mode with data:', 
-                  JSON.stringify(accelData ? {
-                    x: accelData.x,
-                    y: accelData.y,
-                    z: accelData.z,
-                    transformed: accelData.transformed ? 'present' : 'missing'
-                  } : 'null', null, 2));
-      }
-    }
     
     setShowProcessed(newMode);
     SensorProcessor.setFiltering(newMode);
