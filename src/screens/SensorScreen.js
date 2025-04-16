@@ -28,6 +28,9 @@ import SensorDisplay from '../components/SensorDisplay';
 import GGPlot from '../components/GGPlot';
 import DebugPanel from '../components/DebugPanel';
 import GyroVisualizer from '../components/GyroVisualizer';
+import FilterTester from '../components/FilterTester';
+import FilterGraphs from '../components/FilterGraphs';
+import EnhancedSensorProcessor from '../processors/EnhancedSensorProcessor';
 
 const SensorScreen = () => {
   const { isAdmin } = useAdmin();
@@ -61,6 +64,9 @@ const SensorScreen = () => {
   const calibratingRef = useRef(false);
   const appStateRef = useRef(AppState.currentState);
   
+  const [enhancedAccelData, setEnhancedAccelData] = useState(null);
+  const [enhancedGyroData, setEnhancedGyroData] = useState(null);
+
   // Initialize systems on mount
   useEffect(() => {
     async function initializeSystems() {
@@ -218,6 +224,8 @@ const SensorScreen = () => {
           setDataPointCount(dataPointCountRef.current);
         }
       }
+      const enhancedData = EnhancedSensorProcessor.processAccelerometerData(rawData);
+      setEnhancedAccelData(enhancedData);
     } catch (error) {
       console.error("Error processing accelerometer data:", error);
     }
@@ -250,6 +258,8 @@ const handleGyroscopeData = (rawData) => {
         CloudStorage.queueData(userId, sessionIdRef.current, 'gyroscope', processedData);
       }
     }
+    const enhancedData = EnhancedSensorProcessor.processGyroscopeData(rawData);
+    setEnhancedGyroData(enhancedData);
   } catch (error) {
     console.error("Error processing gyroscope data:", error);
   }
@@ -691,7 +701,19 @@ const handleGyroscopeData = (rawData) => {
           scale={0.1} 
           showProcessed={showProcessed} 
         />
-        
+
+        {/* Add the FilterTester component right here, before any closing tags */}
+        <FilterTester accelData={accelData} gyroData={gyroData} />
+
+        {/* Add the filter graphs component right here */}
+        {enhancedAccelData && enhancedGyroData && (
+          <FilterGraphs 
+            accelData={enhancedAccelData}
+            gyroData={enhancedGyroData}
+            maxPoints={50}
+          />
+        )}
+
         {/* Debug panel */}
         {showDebugPanel && (
           <DebugPanel 
