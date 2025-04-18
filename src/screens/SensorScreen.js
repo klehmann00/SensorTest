@@ -31,6 +31,8 @@ import GyroVisualizer from '../components/GyroVisualizer';
 import FilterTester from '../components/FilterTester';
 import FilterGraphs from '../components/FilterGraphs';
 import EnhancedSensorProcessor from '../processors/EnhancedSensorProcessor';
+import DisturbanceVisualizer from '../components/DisturbanceVisualizer';
+import GyroDisturbanceVisualizer from '../components/GyroDisturbanceVisualizer';
 
 const SensorScreen = () => {
   const { isAdmin } = useAdmin();
@@ -711,6 +713,22 @@ const handleGyroscopeData = (rawData) => {
             accelData={enhancedAccelData}
             gyroData={enhancedGyroData}
             maxPoints={50}
+          />
+        )}
+
+        {/* Disturbance visualization */}
+        {enhancedAccelData && enhancedAccelData.disturbanceMetrics && (
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Disturbance Analysis</Text>
+            <DisturbanceVisualizer
+            disturbanceData={enhancedAccelData.disturbanceMetrics.accel}
+          />
+          </View>
+        )}
+
+        {enhancedAccelData?.disturbanceMetrics?.gyro && (
+          <GyroDisturbanceVisualizer
+          disturbanceData={enhancedAccelData.disturbanceMetrics.gyro}
           />
         )}
 

@@ -7,6 +7,9 @@
  * 2. Vehicle dynamics (medium filtering)
  * 3. Road conditions (heavy filtering)
  */
+
+import DisturbanceProcessor from '../processors/DisturbanceProcessor';
+
 class EnhancedSensorProcessor {
     constructor() {
       // Initialize filter coefficients for each perspective
@@ -56,6 +59,8 @@ class EnhancedSensorProcessor {
       // Constants
       this.GRAVITY = 9.81; // m/s²
       
+      this.lastGyroData = null;
+
       console.log('EnhancedSensorProcessor initialized');
     }
     
@@ -141,6 +146,7 @@ class EnhancedSensorProcessor {
             this.filterSettings[perspective].accel
           );
           
+
           // Store filtered values
           data[perspective].filtered = { ...filtered, timestamp };
           this.state[perspective].accel.prevFiltered = { ...filtered };
@@ -182,6 +188,7 @@ class EnhancedSensorProcessor {
           // Store integrated values
           data[perspective].velocity = { ...this.state[perspective].accel.velocity, timestamp };
           data[perspective].position = { ...this.state[perspective].accel.position, timestamp };
+
         });
         
         // Add computed metrics for driver behavior analysis
@@ -190,17 +197,74 @@ class EnhancedSensorProcessor {
         // Update last timestamp
         this.lastTimestamp = timestamp;
         
-        return data;
-      } catch (error) {
-        console.error('Error in enhanced accelerometer processing:', error);
-        return {
-          raw: rawData,
-          error: true,
-          errorMessage: error.message
-        };
-      }
+        // Add this right before the return statement in processAccelerometerData method in EnhancedSensorProcessor.js
+
+// Process disturbances using the filtered data from all perspectives
+console.log('Processing disturbances with filtered data...');
+
+// Check if filtered data exists on each perspective
+console.log('Filtered data check:', {
+  road: data.road?.filtered ? 'has filtered' : 'no filtered',
+  vehicle: data.vehicle?.filtered ? 'has filtered' : 'no filtered',
+  driver: data.driver?.filtered ? 'has filtered' : 'no filtered',
+  gyroData: this.lastGyroData ? 'available' : 'not available'
+});
+
+
+const disturbanceData = DisturbanceProcessor.processDisturbances({
+    road: data.road,
+    vehicle: data.vehicle, 
+    driver: data.driver,
+    timestamp: timestamp
+  },
+  this.lastGyroData  // Add the second parameter for gyro data
+);
+
+
+// Check if we have the necessary data structures before processing
+if (!data.road || !data.vehicle || !data.driver) {
+  console.log('Missing perspective data:', {
+    hasRoad: !!data.road,
+    hasVehicle: !!data.vehicle, 
+    hasDriver: !!data.driver
+  });
+}
+
+// Log the disturbance data to check it's being generated
+console.log('Disturbance metrics:', disturbanceData ? 'data generated' : 'null data');
+if (disturbanceData) {
+  console.log('Disturbance values:', {
+    road: disturbanceData.accel?.road?.normalizedTotal || 'missing',
+    vehicle: disturbanceData.accel?.vehicle?.normalizedTotal || 'missing',
+    driver: disturbanceData.accel?.driver?.normalizedTotal || 'missing'
+  });
+
+  console.log('Gyro disturbance values:', {
+    road: disturbanceData.gyro.road?.normalizedTotal || 'missing',
+    vehicle: disturbanceData.gyro.vehicle?.normalizedTotal || 'missing',
+    driver: disturbanceData.gyro.driver?.normalizedTotal || 'missing'
+  });
+}
+
+
+// Add disturbance metrics to the output
+data.disturbanceMetrics = disturbanceData;
+
+// Return the enhanced data
+return data;
+    } catch (error) {
+      console.error('Error in enhanced accelerometer processing:', error);
+      return {
+        raw: rawData,
+        error: true,
+        errorMessage: error.message
+      };
     }
+  }
     
+
+
+
     /**
      * Process gyroscope data through all filter levels
      * @param {Object} rawData - Raw gyroscope data
@@ -208,7 +272,6 @@ class EnhancedSensorProcessor {
      */
     processGyroscopeData(rawData) {
       if (!rawData) return null;
-      console.log('Processing gyro data:', rawData);
 
       try {
         // Extract timestamp and ensure it's numeric
@@ -222,8 +285,6 @@ class EnhancedSensorProcessor {
         const rawY = rawData.pitch || 0; // Pitch rate
         const rawZ = rawData.yaw || 0; // Yaw rate
         
-        console.log('Extracted gyro raw values:', { rawX, rawY, rawZ });
-
         // Get data with consistent property structure
         const data = {
           raw: { x: rawX, y: rawY, z: rawZ, timestamp },
@@ -277,6 +338,8 @@ class EnhancedSensorProcessor {
         // Update last timestamp
         this.lastTimestamp = timestamp;
         
+        this.lastGyroData = data;
+
         return data;
       } catch (error) {
         console.error('Error in enhanced gyroscope processing:', error);
