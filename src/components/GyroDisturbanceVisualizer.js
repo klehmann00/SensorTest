@@ -20,7 +20,7 @@ const GyroDisturbanceVisualizer = ({ disturbanceData, width = 320 }) => {
   const gyroData = disturbanceData;
   const height = 650;
   const barHeight = 25;
-  const barWidth = width - 80;
+  const barWidth = width - 120;
   const barSpacing = 10;
   const leftMargin = 70;
   
