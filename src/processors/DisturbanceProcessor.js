@@ -217,28 +217,71 @@ reset() {
       });
 
 // Process gyroscope data if provided
+// Process gyroscope data if provided
 if (gyroData) {
   console.log('Processing gyro data:', gyroData ? 'present' : 'missing');
+  
+  // Define gyro-specific thresholds that are appropriate for the incoming data
+  const gyroThresholds = {
+    road: 0.002,    // Lower threshold for road
+    vehicle: 0.003, // Lower threshold for vehicle
+    driver: 0.004   // Lower threshold for driver
+  };
+  
+  // Define gyro-specific sensitivity factors
+  const gyroSensitivityFactors = {
+    road: 100.0,     // Higher sensitivity for road
+    vehicle: 150.0,  // Even higher for vehicle
+    driver: 50.0    //  for driver
+  };
+  
   ['road', 'vehicle', 'driver'].forEach(perspective => {
     const gyroFiltered = gyroData[perspective]?.filtered;
-    if (!gyroFiltered) return;
+    if (!gyroFiltered) {
+      console.log(`No gyro filtered data for ${perspective}`);
+      gyroDisturbance[perspective] = {
+        roll: 0,
+        pitch: 0,
+        yaw: 0,
+        total: 0,
+        normalizedRoll: 0,
+        normalizedPitch: 0,
+        normalizedYaw: 0,
+        normalizedTotal: 0
+      };
+
+      // In processDisturbances function, right before returning:
+      console.log('Full disturbance structure before return:', {
+        accel: {
+          roadProps: Object.keys(this.disturbanceEnergy.road),
+          vehicleProps: Object.keys(this.disturbanceEnergy.vehicle),
+          driverProps: Object.keys(this.disturbanceEnergy.driver)
+        },
+        gyro: {
+          roadProps: Object.keys(gyroDisturbance.road),
+          vehicleProps: Object.keys(gyroDisturbance.vehicle), 
+          driverProps: Object.keys(gyroDisturbance.driver)
+        }
+      });
+      return;
+    }
     
     // Calculate gyro energy - similar to accel energy but simpler
     const rollRate = Math.abs(gyroFiltered.x);
     const pitchRate = Math.abs(gyroFiltered.y);
     const yawRate = Math.abs(gyroFiltered.z);
     
-    // Thresholds for gyro data
-    const gyroThreshold = this.config[perspective].accelerationThreshold * 0.5;
+    // Use the specific gyro thresholds
+    const gyroThreshold = gyroThresholds[perspective];
     
-    // Calculate energy for each axis (simple model)
+    // Calculate energy for each axis with gyro-specific sensitivity factors
     const rollEnergy = rollRate > gyroThreshold ? 
-      Math.pow(rollRate - gyroThreshold, 2) * this.config[perspective].sensitivityFactor : 0;
+      Math.pow(rollRate - gyroThreshold, 2) * gyroSensitivityFactors[perspective] : 0;
     const pitchEnergy = pitchRate > gyroThreshold ? 
-      Math.pow(pitchRate - gyroThreshold, 2) * this.config[perspective].sensitivityFactor : 0;
+      Math.pow(pitchRate - gyroThreshold, 2) * gyroSensitivityFactors[perspective] : 0;
     const yawEnergy = yawRate > gyroThreshold ? 
-      Math.pow(yawRate - gyroThreshold, 2) * this.config[perspective].sensitivityFactor : 0;
-    
+      Math.pow(yawRate - gyroThreshold, 2) * gyroSensitivityFactors[perspective] : 0;
+
       // Apply decay and accumulation for gyro disturbance
       gyroDisturbance[perspective].roll = 
         gyroDisturbance[perspective].roll * this.config[perspective].decayFactor + 
@@ -278,6 +321,11 @@ if (gyroData) {
   });
 }
 
+        console.log('Gyro disturbance structure after processing:', {
+          road: gyroDisturbance.road ? 'initialized' : 'missing',
+          vehicle: gyroDisturbance.vehicle ? 'initialized' : 'missing',
+          driver: gyroDisturbance.driver ? 'initialized' : 'missing'
+        });
 
          // Debug output before returning
         console.log('Normalized disturbance values:', {

@@ -8,7 +8,7 @@ const DisturbanceVisualizer = ({ disturbanceData, width = 320 }) => {
     return null;
   }
   
-  const height = 400;
+  const height = 650;
   const barHeight = 30;
   const barWidth = width - 80;
   const barSpacing = 15;

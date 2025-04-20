@@ -240,9 +240,9 @@ if (disturbanceData) {
   });
 
   console.log('Gyro disturbance values:', {
-    road: disturbanceData.gyro.road?.normalizedTotal || 'missing',
-    vehicle: disturbanceData.gyro.vehicle?.normalizedTotal || 'missing',
-    driver: disturbanceData.gyro.driver?.normalizedTotal || 'missing'
+    road: disturbanceData?.gyro.road?.normalizedTotal || 'missing',
+    vehicle: disturbanceData?.gyro.vehicle?.normalizedTotal || 'missing',
+    driver: disturbanceData?.gyro.driver?.normalizedTotal || 'missing'
   });
 }
 

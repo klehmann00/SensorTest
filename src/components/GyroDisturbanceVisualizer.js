@@ -4,15 +4,24 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 
 const GyroDisturbanceVisualizer = ({ disturbanceData, width = 320 }) => {
-  if (!disturbanceData || !disturbanceData.gyro) {
+  console.log('GyroDisturbanceVisualizer received data structure:', {
+    hasDisturbanceData: !!disturbanceData,
+    hasRoad: !!disturbanceData?.road,
+    hasVehicle: !!disturbanceData?.vehicle,
+    hasDriver: !!disturbanceData?.driver,
+    roadTotal: disturbanceData?.road?.normalizedTotal,
+    vehicleTotal: disturbanceData?.vehicle?.normalizedTotal,
+    driverTotal: disturbanceData?.driver?.normalizedTotal
+  });
+  if (!disturbanceData) {
     return null;
   }
   
-  const gyroData = disturbanceData.gyro;
-  const height = 400;
-  const barHeight = 30;
+  const gyroData = disturbanceData;
+  const height = 650;
+  const barHeight = 25;
   const barWidth = width - 80;
-  const barSpacing = 15;
+  const barSpacing = 10;
   const leftMargin = 70;
   
   // Color functions
@@ -75,6 +84,14 @@ const GyroDisturbanceVisualizer = ({ disturbanceData, width = 320 }) => {
   const roadY = 40;
   const vehicleY = roadY + 4 * (barHeight + barSpacing) + 20;
   const driverY = vehicleY + 4 * (barHeight + barSpacing) + 20;
+  
+  console.log('GyroVisualizer rendering with dimensions:', { 
+    height,
+    roadY,
+    vehicleY, 
+    driverY,
+    totalNeededHeight: driverY + (4 * (barHeight + barSpacing))
+  });
   
   return (
     <View style={[styles.container, { width }]}>
